@@ -121,43 +121,35 @@ void Application::Initialize() {
     mcp_server.AddUserOnlyTools();
 
 // 1. Light 1
-    mcp_server.AddTool("control_light1", "Turn Light 1 on or off (state: true/false)",
+    mcp_server.AddTool("control_light1", "Turn Light 1 on or off",
         PropertyList(),
-        [](const cJSON* params) -> std::string {
-            auto item = cJSON_GetObjectItem(params, "state");
-            uint8_t s = (item && cJSON_IsTrue(item)) ? 1 : 0;
-            SendRelayControl(DEVICE_LIGHT1, s);
-            return s ? "Light 1 turned ON" : "Light 1 turned OFF";
+        [](const PropertyList& properties) {
+            SendRelayControl(DEVICE_LIGHT1, 1);
+            return "Light 1 switched";
         });
 
     // 2. Light 2
-    mcp_server.AddTool("control_light2", "Turn Light 2 on or off (state: true/false)",
+    mcp_server.AddTool("control_light2", "Turn Light 2 on or off",
         PropertyList(),
-        [](const cJSON* params) -> std::string {
-            auto item = cJSON_GetObjectItem(params, "state");
-            uint8_t s = (item && cJSON_IsTrue(item)) ? 1 : 0;
-            SendRelayControl(DEVICE_LIGHT2, s);
-            return s ? "Light 2 turned ON" : "Light 2 turned OFF";
+        [](const PropertyList& properties) {
+            SendRelayControl(DEVICE_LIGHT2, 1);
+            return "Light 2 switched";
         });
 
     // 3. Fan
-    mcp_server.AddTool("control_fan", "Turn Fan on or off (state: true/false)",
+    mcp_server.AddTool("control_fan", "Turn Fan on or off",
         PropertyList(),
-        [](const cJSON* params) -> std::string {
-            auto item = cJSON_GetObjectItem(params, "state");
-            uint8_t s = (item && cJSON_IsTrue(item)) ? 1 : 0;
-            SendRelayControl(DEVICE_FAN, s);
-            return s ? "Fan turned ON" : "Fan turned OFF";
+        [](const PropertyList& properties) {
+            SendRelayControl(DEVICE_FAN, 1);
+            return "Fan switched";
         });
 
     // 4. TV
-    mcp_server.AddTool("control_tv", "Turn TV on or off (state: true/false)",
+    mcp_server.AddTool("control_tv", "Turn TV on or off",
         PropertyList(),
-        [](const cJSON* params) -> std::string {
-            auto item = cJSON_GetObjectItem(params, "state");
-            uint8_t s = (item && cJSON_IsTrue(item)) ? 1 : 0;
-            SendRelayControl(DEVICE_TV, s);
-            return s ? "TV turned ON" : "TV turned OFF";
+        [](const PropertyList& properties) {
+            SendRelayControl(DEVICE_TV, 1);
+            return "TV switched";
         });
   
     mcp_server.LogToolInventory();
