@@ -16,6 +16,7 @@
 #include "emo_mood.h"
 #include "emo_touch.h"
 #include "emo_espnow.h"
+#include "math_display.h"
 
 #include <driver/gpio.h>
 #include <esp_log.h>
@@ -119,8 +120,9 @@ void Application::Initialize() {
     auto& mcp_server = McpServer::GetInstance();
     mcp_server.AddCommonTools();
     mcp_server.AddUserOnlyTools();
+    RegisterMathDisplayTool();
 
-// 1. Light 1
+     // 1. Light 1
     mcp_server.AddTool("control_light1", "Turn Light 1 on or off",
         PropertyList(),
         [](const PropertyList& properties) {
