@@ -123,13 +123,12 @@ void Application::Initialize() {
     mcp_server.AddTool("show_math_solution",
         "Display step-by-step math or physics equation solutions on the screen",
         PropertyList({
-            Property("solution", Property::Type::kString, "Full step-by-step math solution with formulas")
+            Property("solution", kPropertyTypeString)
         }),
-        [this](const PropertyList& properties) {
-            std::string solution = properties.GetString("solution");
+        [this](const PropertyList& properties) -> ToolResult {
+            std::string solution = properties["solution"].value<std::string>();
             auto display = Board::GetInstance().GetDisplay();
             if (display && !solution.empty()) {
-                // Screen par notification ke roop mein dikhana taaki subtitle se mix na ho
                 display->ShowNotification(solution.c_str(), 15000);
             }
             return "Solution displayed on screen";
