@@ -166,3 +166,8 @@ inline void RunEmoBootAnimation(Display* display) {
 #else
 inline void RunEmoBootAnimation(Display* display) {}
 #endif
+
+
+
+
+
