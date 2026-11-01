@@ -120,8 +120,11 @@ void Application::Initialize() {
     mcp_server.AddCommonTools();
     mcp_server.AddUserOnlyTools();
 
-   // --- ESP-NOW 4-Relay Wireless Tools ---
-    mcp_server.AddTool("control_light1", "Turn Light 1 on or off (params: bool state)",
+// 1. Light 1
+    mcp_server.AddTool("control_light1", "Turn Light 1 on or off",
+        PropertyList({
+            Property("state", PropertyType::kBoolean, "True for ON, False for OFF", true)
+        }),
         [](const cJSON* params) -> std::string {
             auto item = cJSON_GetObjectItem(params, "state");
             uint8_t s = (item && cJSON_IsTrue(item)) ? 1 : 0;
@@ -129,7 +132,11 @@ void Application::Initialize() {
             return s ? "Light 1 turned ON" : "Light 1 turned OFF";
         });
 
-    mcp_server.AddTool("control_light2", "Turn Light 2 on or off (params: bool state)",
+    // 2. Light 2
+    mcp_server.AddTool("control_light2", "Turn Light 2 on or off",
+        PropertyList({
+            Property("state", PropertyType::kBoolean, "True for ON, False for OFF", true)
+        }),
         [](const cJSON* params) -> std::string {
             auto item = cJSON_GetObjectItem(params, "state");
             uint8_t s = (item && cJSON_IsTrue(item)) ? 1 : 0;
@@ -137,7 +144,11 @@ void Application::Initialize() {
             return s ? "Light 2 turned ON" : "Light 2 turned OFF";
         });
 
-    mcp_server.AddTool("control_fan", "Turn Fan on or off (params: bool state)",
+    // 3. Fan
+    mcp_server.AddTool("control_fan", "Turn Fan on or off",
+        PropertyList({
+            Property("state", PropertyType::kBoolean, "True for ON, False for OFF", true)
+        }),
         [](const cJSON* params) -> std::string {
             auto item = cJSON_GetObjectItem(params, "state");
             uint8_t s = (item && cJSON_IsTrue(item)) ? 1 : 0;
@@ -145,7 +156,11 @@ void Application::Initialize() {
             return s ? "Fan turned ON" : "Fan turned OFF";
         });
 
-    mcp_server.AddTool("control_tv", "Turn TV on or off (params: bool state)",
+    // 4. TV
+    mcp_server.AddTool("control_tv", "Turn TV on or off",
+        PropertyList({
+            Property("state", PropertyType::kBoolean, "True for ON, False for OFF", true)
+        }),
         [](const cJSON* params) -> std::string {
             auto item = cJSON_GetObjectItem(params, "state");
             uint8_t s = (item && cJSON_IsTrue(item)) ? 1 : 0;
@@ -408,7 +423,7 @@ void Application::HandleActivationDoneEvent() {
         pending_startup_wake_word_hint_ = !has_error;
     }
    if (!has_error) {
-        auto display = Board::GetInstance().GetDisplay();
+       // auto display = Board::GetInstance().GetDisplay();
        // RunEmoBootAnimation(display);
        // std::string message = std::string(Lang::Strings::VERSION) + ota_->GetCurrentVersion();
       //  display->ShowNotification(message.c_str());
