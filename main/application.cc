@@ -119,19 +119,23 @@ void Application::Initialize() {
     auto& mcp_server = McpServer::GetInstance();
     mcp_server.AddCommonTools();
     mcp_server.AddUserOnlyTools();
-    // Math & Physics Equation Display Tool
+   // Math & Physics Equation Display Tool
     mcp_server.AddTool("show_math_solution",
         "Display step-by-step math or physics equation solutions on the screen",
-        PropertyList(),
-        [](const PropertyList& properties) {
+        PropertyList({
+            Property("solution", Property::Type::kString, "Full step-by-step math solution with formulas")
+        }),
+        [this](const PropertyList& properties) {
+            std::string solution = properties.GetString("solution");
             auto display = Board::GetInstance().GetDisplay();
-            if (display) {
-                display->SetChatMessage("assistant", "Solving equation on screen...");
+            if (display && !solution.empty()) {
+                // Screen par notification ke roop mein dikhana taaki subtitle se mix na ho
+                display->ShowNotification(solution.c_str(), 15000);
             }
             return "Solution displayed on screen";
         });
-
-     // 1. Light 1
+   
+    // 1. Light 1
     mcp_server.AddTool("control_light1", "Turn Light 1 on or off",
         PropertyList(),
         [](const PropertyList& properties) {
