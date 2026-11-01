@@ -1,19 +1,3 @@
-error: 'lv_font_montserrat_28' was not declared in this scope; did you mean 'lv_font_montserrat_14'?
-```[cite: 8]
-
-Xiaozhi ke `sdkconfig` mein sirf **`lv_font_montserrat_14`** enabled hai, 28-size font disable rehta hai flash memory bachane ke liye[cite: 8].
-
-Isko theek karne ke do simple solutions hain:
-1. `lv_font_montserrat_14` use karein[cite: 8].
-2. Font chhota na lage, iske liye LVGL ke text transform ya direct `lv_font_montserrat_14` ko clean set kar dein.
-
----
-
-### Fixed `main/boot_anim.h`
-
-Is code mein `lv_font_montserrat_28` ko hata kar standard `lv_font_montserrat_14` kar diya hai[cite: 8]:
-
-```cpp
 #pragma once
 
 #include "display.h"
@@ -45,7 +29,7 @@ inline void RunEmoBootAnimation(Display* display) {
     lv_obj_set_style_arc_width(ring, 4, LV_PART_MAIN);
     lv_obj_set_style_arc_color(ring, lv_color_hex(0x00E5FF), LV_PART_MAIN);
 
-    // 3. Center EMO Logo (Using montserrat_14 standard enabled font)
+    // 3. Center EMO Logo
     lv_obj_t* logo_label = lv_label_create(boot_scr);
     lv_label_set_text(logo_label, "E  M  O");
     lv_obj_set_style_text_color(logo_label, lv_color_white(), 0);
