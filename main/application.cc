@@ -15,6 +15,7 @@
 #include "boot_anim.h"
 #include "emo_mood.h"
 #include "emo_touch.h"
+#include "emo_espnow.h"
 
 #include <driver/gpio.h>
 #include <esp_log.h>
@@ -119,6 +120,39 @@ void Application::Initialize() {
     mcp_server.AddCommonTools();
     mcp_server.AddUserOnlyTools();
 
+   // --- ESP-NOW 4-Relay Wireless Tools ---
+    mcp_server.AddTool("control_light1", "Turn Light 1 on or off (params: bool state)",
+        [](const cJSON* params) -> std::string {
+            auto item = cJSON_GetObjectItem(params, "state");
+            uint8_t s = (item && cJSON_IsTrue(item)) ? 1 : 0;
+            SendRelayControl(DEVICE_LIGHT1, s);
+            return s ? "Light 1 turned ON" : "Light 1 turned OFF";
+        });
+
+    mcp_server.AddTool("control_light2", "Turn Light 2 on or off (params: bool state)",
+        [](const cJSON* params) -> std::string {
+            auto item = cJSON_GetObjectItem(params, "state");
+            uint8_t s = (item && cJSON_IsTrue(item)) ? 1 : 0;
+            SendRelayControl(DEVICE_LIGHT2, s);
+            return s ? "Light 2 turned ON" : "Light 2 turned OFF";
+        });
+
+    mcp_server.AddTool("control_fan", "Turn Fan on or off (params: bool state)",
+        [](const cJSON* params) -> std::string {
+            auto item = cJSON_GetObjectItem(params, "state");
+            uint8_t s = (item && cJSON_IsTrue(item)) ? 1 : 0;
+            SendRelayControl(DEVICE_FAN, s);
+            return s ? "Fan turned ON" : "Fan turned OFF";
+        });
+
+    mcp_server.AddTool("control_tv", "Turn TV on or off (params: bool state)",
+        [](const cJSON* params) -> std::string {
+            auto item = cJSON_GetObjectItem(params, "state");
+            uint8_t s = (item && cJSON_IsTrue(item)) ? 1 : 0;
+            SendRelayControl(DEVICE_TV, s);
+            return s ? "TV turned ON" : "TV turned OFF";
+        });
+  
     mcp_server.LogToolInventory();
 
     // Set network event callback for UI updates and network state handling
@@ -314,6 +348,9 @@ void Application::HandleNetworkConnectedEvent() {
     ESP_LOGI(TAG, "Network connected");
     auto state = GetDeviceState();
 
+   // Wi-Fi connect hote hi ESP-NOW sender ready ho jayega
+    InitEmoRelaySender();
+   
     if (state == kDeviceStateStarting || state == kDeviceStateWifiConfiguring) {
         // Network is ready, start activation
         SetDeviceState(kDeviceStateActivating);
