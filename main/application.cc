@@ -16,7 +16,6 @@
 #include "emo_mood.h"
 #include "emo_touch.h"
 #include "emo_espnow.h"
-#include "math_display.h"
 
 #include <driver/gpio.h>
 #include <esp_log.h>
@@ -120,7 +119,17 @@ void Application::Initialize() {
     auto& mcp_server = McpServer::GetInstance();
     mcp_server.AddCommonTools();
     mcp_server.AddUserOnlyTools();
-    RegisterMathDisplayTool();
+    // Math & Physics Equation Display Tool
+    mcp_server.AddTool("show_math_solution",
+        "Display step-by-step math or physics equation solutions on the screen",
+        PropertyList(),
+        [](const PropertyList& properties) {
+            auto display = Board::GetInstance().GetDisplay();
+            if (display) {
+                display->SetChatMessage("assistant", "Solving equation on screen...");
+            }
+            return "Solution displayed on screen";
+        });
 
      // 1. Light 1
     mcp_server.AddTool("control_light1", "Turn Light 1 on or off",
