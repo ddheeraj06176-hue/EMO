@@ -120,11 +120,9 @@ void Application::Initialize() {
     mcp_server.AddCommonTools();
     mcp_server.AddUserOnlyTools();
 
-   // 1. Light 1
-    mcp_server.AddTool("control_light1", "Turn Light 1 on or off",
-        PropertyList(std::vector<Property>{
-            Property("state", PropertyType::kBool, "True for ON, False for OFF", true)
-        }),
+// 1. Light 1
+    mcp_server.AddTool("control_light1", "Turn Light 1 on or off (state: true/false)",
+        PropertyList(),
         [](const cJSON* params) -> std::string {
             auto item = cJSON_GetObjectItem(params, "state");
             uint8_t s = (item && cJSON_IsTrue(item)) ? 1 : 0;
@@ -133,10 +131,8 @@ void Application::Initialize() {
         });
 
     // 2. Light 2
-    mcp_server.AddTool("control_light2", "Turn Light 2 on or off",
-        PropertyList(std::vector<Property>{
-            Property("state", PropertyType::kBool, "True for ON, False for OFF", true)
-        }),
+    mcp_server.AddTool("control_light2", "Turn Light 2 on or off (state: true/false)",
+        PropertyList(),
         [](const cJSON* params) -> std::string {
             auto item = cJSON_GetObjectItem(params, "state");
             uint8_t s = (item && cJSON_IsTrue(item)) ? 1 : 0;
@@ -145,10 +141,8 @@ void Application::Initialize() {
         });
 
     // 3. Fan
-    mcp_server.AddTool("control_fan", "Turn Fan on or off",
-        PropertyList(std::vector<Property>{
-            Property("state", PropertyType::kBool, "True for ON, False for OFF", true)
-        }),
+    mcp_server.AddTool("control_fan", "Turn Fan on or off (state: true/false)",
+        PropertyList(),
         [](const cJSON* params) -> std::string {
             auto item = cJSON_GetObjectItem(params, "state");
             uint8_t s = (item && cJSON_IsTrue(item)) ? 1 : 0;
@@ -157,10 +151,8 @@ void Application::Initialize() {
         });
 
     // 4. TV
-    mcp_server.AddTool("control_tv", "Turn TV on or off",
-        PropertyList(std::vector<Property>{
-            Property("state", PropertyType::kBool, "True for ON, False for OFF", true)
-        }),
+    mcp_server.AddTool("control_tv", "Turn TV on or off (state: true/false)",
+        PropertyList(),
         [](const cJSON* params) -> std::string {
             auto item = cJSON_GetObjectItem(params, "state");
             uint8_t s = (item && cJSON_IsTrue(item)) ? 1 : 0;
