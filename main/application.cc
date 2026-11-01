@@ -14,6 +14,7 @@
 #include "servo_controller.h"
 #include "boot_anim.h"
 #include "emo_mood.h"
+#include "emo_touch.h"
 
 #include <driver/gpio.h>
 #include <esp_log.h>
@@ -77,6 +78,7 @@ void Application::Initialize() {
     // Print board name/version info
    // display->SetChatMessage("system", SystemInfo::GetUserAgent().c_str());
     EmoMoodEngine::GetInstance().Start(display);
+    StartEmoTouchService(display);
   
     // Setup the audio service
     auto codec = board.GetAudioCodec();
