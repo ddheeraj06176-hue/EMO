@@ -192,7 +192,36 @@ void Application::Initialize() {
             SendRelayControl(DEVICE_TV, 1);
             return "TV switched";
         });
-  
+
+    // 5. Music Stream Player Tool
+    mcp_server.AddTool("play_music",
+        "Search and play a song or music track by name or stream URL",
+        PropertyList({
+            Property("song_name", kPropertyTypeString),
+            Property("audio_url", kPropertyTypeString)
+        }),
+        [this](const PropertyList& properties) -> ToolResult {
+            std::string song_name = properties["song_name"].value<std::string>();
+            std::string audio_url = properties["audio_url"].value<std::string>();
+
+            // Agar server se seedha direct audio URL mila hai
+            if (!audio_url.empty()) {
+                Schedule([this, audio_url, song_name]() {
+                    auto display = Board::GetInstance().GetDisplay();
+                    if (display) {
+                        display->SetEmotion("happy");
+                        std::string msg = "Playing: " + song_name;
+                        display->ShowNotification(msg.c_str(), 5000);
+                    }
+                    // EMO ke internal audio streamer se song bajana
+                    std::vector<NotifySubtitle> dummy_subs;
+                    StartNotification(audio_url, dummy_subs);
+                });
+                return "Playing music now";
+            }
+            return "Audio URL missing";
+        });
+   
     mcp_server.LogToolInventory();
 
     // Set network event callback for UI updates and network state handling
