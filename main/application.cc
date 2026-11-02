@@ -229,8 +229,8 @@ void Application::Initialize() {
                 std::string query = ctx->second;
                 delete ctx;
 
-                // Alternate reliable endpoint
-                std::string api_url = "https://saavn.me/search/songs?query=" + query + "&page=1&limit=1";
+             // Sabse fast aur reliable instance
+                std::string api_url = "https://saavn.sumit.co/api/search/songs?query=" + query + "&page=1&limit=1";
                 char* response_buffer = (char*)calloc(1, 4096);
                 if (!response_buffer) {
                     vTaskDelete(NULL);
@@ -239,9 +239,11 @@ void Application::Initialize() {
 
                 esp_http_client_config_t config = {};
                 config.url = api_url.c_str();
-                config.timeout_ms = 8000;
+                config.timeout_ms = 12000;              // 12 second timeout for slow DNS/TLS handshake
                 config.skip_cert_common_name_check = true;
                 config.crt_bundle_attach = esp_crt_bundle_attach;
+                config.buffer_size = 2048;              // TLS buffer support
+                config.buffer_size_tx = 1024; 
 
                 esp_http_client_handle_t client = esp_http_client_init(&config);
                 esp_err_t err = esp_http_client_open(client, 0);
