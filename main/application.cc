@@ -24,6 +24,7 @@
 #include <algorithm>
 #include <cstring>
 #include <limits>
+#include <esp_http_client.h>
 
 #define TAG "Application"
 
@@ -193,36 +194,115 @@ void Application::Initialize() {
             return "TV switched";
         });
 
-    // 5. Music Stream Player Tool
+  // 5. Indian Music Stream Player Tool (JioSaavn API Search)
     mcp_server.AddTool("play_music",
-        "Search and play a song or music track by name or stream URL",
+        "Search and play Indian/Bollywood/Punjabi songs by name",
         PropertyList({
-            Property("song_name", kPropertyTypeString),
-            Property("audio_url", kPropertyTypeString)
+            Property("song_name", kPropertyTypeString)
         }),
         [this](const PropertyList& properties) -> ToolResult {
             std::string song_name = properties["song_name"].value<std::string>();
-            std::string audio_url = properties["audio_url"].value<std::string>();
-
-            // Agar server se seedha direct audio URL mila hai
-            if (!audio_url.empty()) {
-                Schedule([this, audio_url, song_name]() {
-                    auto display = Board::GetInstance().GetDisplay();
-                    if (display) {
-                        display->SetEmotion("happy");
-                        std::string msg = "Playing: " + song_name;
-                        display->ShowNotification(msg.c_str(), 5000);
-                    }
-                    // EMO ke internal audio streamer se song bajana
-                    std::vector<NotifySubtitle> dummy_subs;
-                    StartNotification(audio_url, dummy_subs);
-                });
-                return "Playing music now";
+            if (song_name.empty()) {
+                return "Song name missing";
             }
-            return "Audio URL missing";
+
+            // Gaane ke naam ki spaces ko '%20' mein convert karna
+            std::string encoded_song = "";
+            for (char c : song_name) {
+                if (c == ' ') encoded_song += "%20";
+                else encoded_song += c;
+            }
+
+            // Screen par notification show karna
+            Schedule([this, song_name]() {
+                auto display = Board::GetInstance().GetDisplay();
+                if (display) {
+                    display->SetEmotion("happy");
+                    std::string msg = "Searching: " + song_name;
+                    display->ShowNotification(msg.c_str(), 4000);
+                }
+            });
+
+            // Background task mein search aur play trigger karna taaki main thread block na ho
+            xTaskCreate([](void* arg) {
+                auto* ctx = static_cast<std::pair<Application*, std::string>*>(arg);
+                Application* app = ctx->first;
+                std::string query = ctx->second;
+                delete ctx;
+
+                std::string api_url = "https://saavn.dev/api/search/songs?query=" + query + "&limit=1";
+                char response_buffer[4096] = {0};
+
+                esp_http_client_config_t config = {};
+                config.url = api_url.c_str();
+                config.timeout_ms = 6000;
+                config.skip_cert_common_name_check = true;
+
+                esp_http_client_handle_t client = esp_http_client_init(&config);
+                esp_err_t err = esp_http_client_open(client, 0);
+
+                std::string audio_url = "";
+                std::string track_name = query;
+
+                if (err == ESP_OK) {
+                    esp_http_client_fetch_headers(client);
+                    int read_len = esp_http_client_read_response(client, response_buffer, sizeof(response_buffer) - 1);
+                    if (read_len > 0) {
+                        response_buffer[read_len] = '\0';
+                        cJSON* root = cJSON_Parse(response_buffer);
+                        if (root) {
+                            cJSON* data = cJSON_GetObjectItem(root, "data");
+                            cJSON* results = data ? cJSON_GetObjectItem(data, "results") : nullptr;
+                            if (results && cJSON_GetArraySize(results) > 0) {
+                                cJSON* first_song = cJSON_GetArrayItem(results, 0);
+                                cJSON* name_item = cJSON_GetObjectItem(first_song, "name");
+                                if (name_item && cJSON_IsString(name_item)) {
+                                    track_name = name_item->valuestring;
+                                }
+
+                                cJSON* download_url = cJSON_GetObjectItem(first_song, "downloadUrl");
+                                if (download_url && cJSON_IsArray(download_url)) {
+                                    // 160kbps ya direct stream link uthana
+                                    int count = cJSON_GetArraySize(download_url);
+                                    cJSON* best_url = cJSON_GetArrayItem(download_url, count > 2 ? 2 : count - 1);
+                                    cJSON* link = best_url ? cJSON_GetObjectItem(best_url, "url") : nullptr;
+                                    if (link && cJSON_IsString(link)) {
+                                        audio_url = link->valuestring;
+                                    }
+                                }
+                            }
+                            cJSON_Delete(root);
+                        }
+                    }
+                }
+                esp_http_client_cleanup(client);
+
+                if (!audio_url.empty()) {
+                    ESP_LOGI("Music", "Playing track: %s, URL: %s", track_name.c_str(), audio_url.c_str());
+                    app->Schedule([app, audio_url, track_name]() {
+                        auto display = Board::GetInstance().GetDisplay();
+                        if (display) {
+                            display->SetEmotion("happy");
+                            std::string msg = "Playing: " + track_name;
+                            display->ShowNotification(msg.c_str(), 5000);
+                        }
+                        std::vector<NotifySubtitle> dummy_subs;
+                        app->StartNotification(audio_url, dummy_subs);
+                    });
+                } else {
+                    ESP_LOGW("Music", "Song not found on Saavn API");
+                    app->Schedule([]() {
+                        auto display = Board::GetInstance().GetDisplay();
+                        if (display) {
+                            display->ShowNotification("Song Not Found", 3000);
+                        }
+                    });
+                }
+                vTaskDelete(NULL);
+            }, "music_fetch_task", 4096 * 2, new std::pair<Application*, std::string>(this, encoded_song), 5, NULL);
+
+            return "Searching and playing song";
         });
-   
-    mcp_server.LogToolInventory();
 
     // Set network event callback for UI updates and network state handling
     board.SetNetworkEventCallback([this](NetworkEvent event, const std::string& data) {
