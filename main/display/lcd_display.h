@@ -55,6 +55,8 @@ public:
 
     // Set whether to hide chat messages/subtitles
     virtual void SetHideSubtitle(bool hide) override;
+    // Control emoji box visibility (hide eyes for math solutions)
+    virtual void SetEmojiBoxVisible(bool visible) override;
 };
 
 // SPI LCD display
