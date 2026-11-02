@@ -1437,3 +1437,22 @@ void LcdDisplay::SetHideSubtitle(bool hide) {
         }
     }
 }
+
+void LcdDisplay::SetEmojiBoxVisible(bool visible) {
+    DisplayLockGuard lock(this);
+    if (emoji_box_ == nullptr) {
+        return;
+    }
+
+    if (visible) {
+        lv_obj_remove_flag(emoji_box_, LV_OBJ_FLAG_HIDDEN);
+        if (gif_controller_) {
+            gif_controller_->Start();
+        }
+    } else {
+        if (gif_controller_) {
+            gif_controller_->Stop();
+        }
+        lv_obj_add_flag(emoji_box_, LV_OBJ_FLAG_HIDDEN);
+    }
+}
