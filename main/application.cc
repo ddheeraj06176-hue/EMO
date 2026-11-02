@@ -237,17 +237,17 @@ void Application::Initialize() {
                     return;
                 }
 
-                esp_http_client_config_t config = {};
+                 esp_http_client_config_t config = {};
                 config.url = api_url.c_str();
-                config.timeout_ms = 12000;              // 12 second timeout for slow DNS/TLS handshake
-                config.skip_cert_common_name_check = true;
+                config.timeout_ms = 10000;
                 config.crt_bundle_attach = esp_crt_bundle_attach;
-                config.buffer_size = 2048;              // TLS buffer support
-                config.buffer_size_tx = 1024; 
+                config.buffer_size = 2048;
+                config.buffer_size_tx = 1024;
 
                 esp_http_client_handle_t client = esp_http_client_init(&config);
                 esp_err_t err = esp_http_client_open(client, 0);
 
+              
                 std::string audio_url = "";
                 std::string track_name = query;
 
