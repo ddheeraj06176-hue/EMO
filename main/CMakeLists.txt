@@ -90,7 +90,6 @@ set(BUILTIN_ICON_FONT font_material_symbols_14_1)
 set(EMOTE_RESOLUTION "320_240")
 
 # Select the board source directory from Kconfig
-# Set default assets if the board uses partition table V2
 if(CONFIG_BOARD_TYPE_BREAD_COMPACT_WIFI)
     set(BOARD_DIR "bread-compact-wifi")
     set(BUILTIN_TEXT_FONT font_noto_sans_basic_14_1)
@@ -259,8 +258,6 @@ elseif(CONFIG_BOARD_TYPE_STACKCHAN)
     set(BUILTIN_TEXT_FONT font_noto_sans_basic_20_4)
     set(BUILTIN_ICON_FONT font_material_symbols_20_4)
     set(DEFAULT_EMOJI_COLLECTION noto-color-emoji_64)
-    # Shared with m5stack/core-s3 rather than copied: this robot is built on that board, and the
-    # codec is the same AW88298 + ES7210 pair behind the same pins.
     list(APPEND SOURCES "boards/m5stack/core-s3/cores3_audio_codec.cc")
 elseif(CONFIG_BOARD_TYPE_M5STACK_STICK_S3)
     set(BOARD_DIR "m5stack/stick-s3")
@@ -296,8 +293,6 @@ elseif(CONFIG_BOARD_TYPE_M5STACK_CARDPUTER)
     set(BUILTIN_TEXT_FONT font_noto_sans_basic_20_4)
     set(BUILTIN_ICON_FONT font_material_symbols_20_4)
     set(DEFAULT_EMOJI_COLLECTION noto-color-emoji_32)
-    # Shared with m5stack/cardputer-adv rather than copied: same 4x14 key layout and screen,
-    # so the keyboard WiFi/server setup UI and key types are reused as-is.
     list(APPEND SOURCES "boards/m5stack/cardputer-adv/wifi_config_ui.cc")
     list(APPEND INCLUDE_DIRS ${CMAKE_CURRENT_SOURCE_DIR}/boards/m5stack/cardputer-adv)
 elseif(CONFIG_BOARD_TYPE_M5STACK_CARDPUTER_ADV)
@@ -340,7 +335,6 @@ elseif(CONFIG_BOARD_TYPE_ESP_SPOT_C5)
     set(BOARD_DIR "espressif/esp-spot")
 elseif(CONFIG_BOARD_TYPE_ESP_HI)
     set(BOARD_DIR "espressif/esp-hi")
-    # Set ESP_HI emoji directory for DEFAULT_ASSETS_EXTRA_FILES
     set(DEFAULT_ASSETS_EXTRA_FILES "${CMAKE_BINARY_DIR}/emoji")
 elseif(CONFIG_BOARD_TYPE_ESP_VOCAT)
     set(BOARD_DIR "espressif/esp-vocat")
@@ -799,7 +793,7 @@ elseif(CONFIG_BOARD_TYPE_XINGZHI_ABS_2_0)
 elseif(CONFIG_BOARD_TYPE_SEEED_STUDIO_SENSECAP_WATCHER)
     set(BOARD_DIR "sensecap-watcher")
     set(BUILTIN_TEXT_FONT font_noto_sans_basic_30_4)
-    set(BUILTIN_ICON_FONT font_material_symbols_20_4)
+    set(BUILTIN_ICON_FONT font_material_symbols_30_4)
     set(DEFAULT_EMOJI_COLLECTION noto-color-emoji_128)
 elseif(CONFIG_BOARD_TYPE_SEEED_XIAO_ESP32S3_RESPEAKER_XVF3800)
     set(BOARD_DIR "seeed/xiao-esp32s3-respeaker-xvf3800")
@@ -819,8 +813,6 @@ elseif(CONFIG_BOARD_TYPE_GENJUTECH_S3_1_54TFT)
     set(DEFAULT_EMOJI_COLLECTION noto-color-emoji_64)
 elseif(CONFIG_BOARD_TYPE_GUITION_JC4827W543)
     set(BOARD_DIR "guition/jc4827w543")
-    # 16px, not the 20px most 480-wide boards use: the assets partition is 1MB
-    # and the 20px common font alone is 1228KB. See the board README.
     set(BUILTIN_TEXT_FONT font_noto_sans_basic_16_4)
     set(BUILTIN_ICON_FONT font_material_symbols_16_4)
     set(DEFAULT_EMOJI_COLLECTION noto-color-emoji_64)
@@ -969,8 +961,6 @@ endif()
 set(BOARD_CONFIG_FILE "${CMAKE_CURRENT_SOURCE_DIR}/boards/${BOARD_DIR}/config.json")
 set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${BOARD_CONFIG_FILE}")
 
-# BOARD_TYPE and BOARD_MANUFACTURER are reported by the firmware.
-# Prefer config.json and fall back to values derived from the full board directory.
 set(BOARD_TYPE "")
 set(BOARD_MANUFACTURER "")
 if(EXISTS "${BOARD_CONFIG_FILE}")
@@ -1016,6 +1006,7 @@ endif()
 if (CONFIG_USE_ESP_BLUFI_WIFI_PROVISIONING)
     list(APPEND SOURCES "boards/common/blufi.cpp")
 endif ()
+
 # Select language directory according to Kconfig
 if(CONFIG_LANGUAGE_ZH_CN)
     set(LANG_DIR "zh-CN")
@@ -1152,7 +1143,6 @@ if(CONFIG_IDF_TARGET_ESP32S3 OR CONFIG_IDF_TARGET_ESP32P4)
                         )
 endif()
 
-# Include EspVideo if target is ESP32S31
 if(CONFIG_IDF_TARGET_ESP32S31)
     list(APPEND SOURCES "boards/common/esp_video.cc")
 endif()
@@ -1161,7 +1151,6 @@ if(CONFIG_BOARD_TYPE_WAVESHARE_ESP32_C5_TOUCH_LCD_3_5)
     list(APPEND SOURCES "boards/common/esp_video.cc")
 endif()
 
-# Include Esp32Camera if target is ESP32S3
 if(CONFIG_IDF_TARGET_ESP32S3)
     list(APPEND SOURCES "boards/common/esp32_camera.cc")
 endif()
@@ -1192,6 +1181,8 @@ if(CONFIG_BOARD_TYPE_ESP32_P4_FUNCTION_EV_BOARD)
         sdmmc
     )
 endif()
+
+# Registered Components: esp_http_client and json explicitly added here
 idf_component_register(SRCS ${SOURCES}
                     EMBED_FILES ${LANG_SOUNDS} ${COMMON_SOUNDS}
                     INCLUDE_DIRS ${INCLUDE_DIRS}
@@ -1201,6 +1192,8 @@ idf_component_register(SRCS ${SOURCES}
                         esp_psram
                         esp_netif
                         esp_eth
+                        esp_http_client
+                        json
                         esp_driver_gpio
                         esp_driver_uart
                         esp_driver_spi
@@ -1222,14 +1215,10 @@ idf_component_register(SRCS ${SOURCES}
                         ${MAIN_PRIV_REQUIRES_EXTRA}
                     )
 
-# Keep project-owned C++ on GNU C++23. ESP-IDF 6 may default to a newer
-# dialect; pin the baseline so main/ does not depend on it.
 if(NOT CMAKE_BUILD_EARLY_EXPANSION)
     target_compile_options(${COMPONENT_LIB} PRIVATE $<$<COMPILE_LANGUAGE:CXX>:-std=gnu++23>)
 endif()
 
-# Use target_compile_definitions to define the reported board identity
-# If BOARD_NAME is empty, use BOARD_TYPE
 if(NOT BOARD_NAME)
     set(BOARD_NAME ${BOARD_TYPE})
 endif()
@@ -1251,10 +1240,6 @@ if(NOT CMAKE_BUILD_EARLY_EXPANSION)
                         PRIVATE BUILTIN_TEXT_FONT=${BUILTIN_TEXT_FONT} BUILTIN_ICON_FONT=${BUILTIN_ICON_FONT}
                         PRIVATE TEXT_FONT_SIZE=${TEXT_FONT_SIZE} TEXT_FONT_BPP=${TEXT_FONT_BPP}
                         )
-    # ESP32-S3 LVGL builtin pool: PSRAM boards allocate it from PSRAM.
-    # Boards that set CONFIG_SPIRAM=n must not keep the 1MB chip-default
-    # pool as a .dram0.bss array (build.py also switches those variants
-    # back to CLIB malloc).
     if(CONFIG_IDF_TARGET_ESP32S3)
         idf_component_get_property(lvgl_lib lvgl__lvgl COMPONENT_LIB)
         if(lvgl_lib)
@@ -1329,10 +1314,6 @@ if(CONFIG_BOARD_TYPE_ESP_VOCAT OR CONFIG_BOARD_TYPE_CYBERAI_VOCAT_V2_0 OR CONFIG
 endif()
 
 if(CONFIG_BOARD_TYPE_ESP_HI)
-# Pin AAF assets to a fixed image_player commit so builds stay reproducible.
-# Only pack AAF files referenced by emoji_display.cc — the full test_8bit set
-# plus wakenet models overflows the 1MB assets partition on the 4MB ESP-HI
-# flash map (see #2228).
 set(URL "https://github.com/espressif2022/image_player/raw/d61e0ccb1d7b0a2a214d0c90f5451fd683f41682/test_apps/test_8bit")
 set(EMOJI_DIR "${CMAKE_BINARY_DIR}/emoji")
 file(MAKE_DIRECTORY ${EMOJI_DIR})
@@ -1349,7 +1330,6 @@ set(FILES_TO_DOWNLOAD
     "wake.aaf"
 )
 
-# Drop leftover AAF files from previous full-set downloads so they are not packed.
 file(GLOB EXISTING_AAF "${EMOJI_DIR}/*.aaf")
 foreach(EXISTING IN LISTS EXISTING_AAF)
     get_filename_component(EXISTING_NAME "${EXISTING}" NAME)
@@ -1364,7 +1344,6 @@ foreach(FILENAME IN LISTS FILES_TO_DOWNLOAD)
     set(REMOTE_FILE "${URL}/${FILENAME}")
     set(LOCAL_FILE "${EMOJI_DIR}/${FILENAME}")
 
-    # Check if local file exists
     if(EXISTS ${LOCAL_FILE})
         message(STATUS "File ${FILENAME} already exists, skipping download")
     else()
@@ -1380,23 +1359,19 @@ endforeach()
 
 endif()
 
-
 # Function to build default assets based on configuration
 function(build_default_assets_bin)
-    # Set output path for generated assets.bin
     set(GENERATED_ASSETS_BIN "${CMAKE_BINARY_DIR}/generated_assets.bin")
     set(DEFAULT_ASSETS_DEPENDENCIES
         "${SDKCONFIG}"
         "${PROJECT_DIR}/scripts/build_default_assets.py"
     )
 
-    # Prepare arguments for build script
     set(BUILD_ARGS
         "--sdkconfig" "${SDKCONFIG}"
         "--output" "${GENERATED_ASSETS_BIN}"
     )
 
-    # Add builtin text font if defined
     if(BUILTIN_TEXT_FONT)
         list(APPEND BUILD_ARGS "--builtin_text_font" "${BUILTIN_TEXT_FONT}")
         string(REPLACE "_basic_" "_common_" COMMON_TEXT_FONT "${BUILTIN_TEXT_FONT}")
@@ -1409,7 +1384,6 @@ function(build_default_assets_bin)
         endif()
     endif()
 
-    # Add default emoji collection if defined
     if(DEFAULT_EMOJI_COLLECTION)
         list(APPEND BUILD_ARGS "--emoji_collection" "${DEFAULT_EMOJI_COLLECTION}")
         file(GLOB DEFAULT_EMOJI_FILES CONFIGURE_DEPENDS
@@ -1418,7 +1392,6 @@ function(build_default_assets_bin)
         list(APPEND DEFAULT_ASSETS_DEPENDENCIES ${DEFAULT_EMOJI_FILES})
     endif()
 
-    # Add default assets extra files if defined
     if(DEFAULT_ASSETS_EXTRA_FILES)
         list(APPEND BUILD_ARGS "--extra_files" "${DEFAULT_ASSETS_EXTRA_FILES}")
     endif()
@@ -1426,13 +1399,11 @@ function(build_default_assets_bin)
     list(APPEND BUILD_ARGS "--esp_sr_model_path" "${ESP_SR_MODEL_PATH}")
     list(APPEND BUILD_ARGS "--noto_fonts_path" "${NOTO_FONTS_PATH}")
 
-    # Enforce assets.bin fits the flash partition (e.g. ESP-HI 4MB map uses 1MB assets).
     partition_table_get_partition_info(assets_partition_size "--partition-name assets" "size")
     if(assets_partition_size)
         list(APPEND BUILD_ARGS "--max_size" "${assets_partition_size}")
     endif()
 
-    # Create custom command to build assets
     add_custom_command(
         OUTPUT ${GENERATED_ASSETS_BIN}
         COMMAND python ${PROJECT_DIR}/scripts/build_default_assets.py ${BUILD_ARGS}
@@ -1441,63 +1412,50 @@ function(build_default_assets_bin)
         VERBATIM
     )
 
-    # Create target for generated assets
     add_custom_target(generated_default_assets ALL
         DEPENDS ${GENERATED_ASSETS_BIN}
     )
 
-    # Set the generated file path in parent scope
     set(GENERATED_ASSETS_LOCAL_FILE ${GENERATED_ASSETS_BIN} PARENT_SCOPE)
 
     message(STATUS "Default assets build configured: ${GENERATED_ASSETS_BIN}")
 endfunction()
 
-
-# Function to get local assets file path (handles both URL and local file)
 function(get_assets_local_file assets_source assets_local_file_var)
-    # Check if it's a URL (starts with http:// or https://)
     if(assets_source MATCHES "^https?://")
-        # It's a URL, download it
         get_filename_component(ASSETS_FILENAME "${assets_source}" NAME)
         set(ASSETS_LOCAL_FILE "${CMAKE_BINARY_DIR}/${ASSETS_FILENAME}")
         set(ASSETS_TEMP_FILE "${CMAKE_BINARY_DIR}/${ASSETS_FILENAME}.tmp")
 
-        # Check if local file exists
         if(EXISTS ${ASSETS_LOCAL_FILE})
             message(STATUS "Assets file ${ASSETS_FILENAME} already exists, skipping download")
         else()
             message(STATUS "Downloading ${ASSETS_FILENAME}")
 
-            # Clean up any existing temp file
             if(EXISTS ${ASSETS_TEMP_FILE})
                 file(REMOVE ${ASSETS_TEMP_FILE})
             endif()
 
-            # Download to temporary file first
             file(DOWNLOAD ${assets_source} ${ASSETS_TEMP_FILE}
                  STATUS DOWNLOAD_STATUS)
             list(GET DOWNLOAD_STATUS 0 STATUS_CODE)
             if(NOT STATUS_CODE EQUAL 0)
-                # Clean up temp file on failure
                 if(EXISTS ${ASSETS_TEMP_FILE})
                     file(REMOVE ${ASSETS_TEMP_FILE})
                 endif()
                 message(FATAL_ERROR "Failed to download ${ASSETS_FILENAME} from ${assets_source}")
             endif()
 
-            # Move temp file to final location (atomic operation)
             file(RENAME ${ASSETS_TEMP_FILE} ${ASSETS_LOCAL_FILE})
             message(STATUS "Successfully downloaded ${ASSETS_FILENAME}")
         endif()
     else()
-        # It's a local file path
         if(IS_ABSOLUTE "${assets_source}")
             set(ASSETS_LOCAL_FILE "${assets_source}")
         else()
             set(ASSETS_LOCAL_FILE "${CMAKE_CURRENT_SOURCE_DIR}/${assets_source}")
         endif()
 
-        # Check if local file exists
         if(NOT EXISTS ${ASSETS_LOCAL_FILE})
             message(FATAL_ERROR "Assets file not found: ${ASSETS_LOCAL_FILE}")
         endif()
@@ -1508,8 +1466,6 @@ function(get_assets_local_file assets_source assets_local_file_var)
     set(${assets_local_file_var} ${ASSETS_LOCAL_FILE} PARENT_SCOPE)
 endfunction()
 
-# Custom and Emote packs contain UI resources plus prebuilt speech models.
-# Keep their UI data, but always replace the models using the current sdkconfig.
 function(configure_assets_models assets_source assets_output)
     set(ASSETS_NAME_LENGTH 32)
     if(CONFIG_USE_EMOTE_MESSAGE_STYLE AND CONFIG_MMAP_FILE_NAME_LENGTH)
@@ -1537,18 +1493,14 @@ function(configure_assets_models assets_source assets_output)
     add_dependencies(flash configured_assets)
 endfunction()
 
-
 partition_table_get_partition_info(size "--partition-name assets" "size")
 partition_table_get_partition_info(offset "--partition-name assets" "offset")
 if ("${size}" AND "${offset}")
-    # Flash assets based on configuration
     if(CONFIG_FLASH_DEFAULT_ASSETS)
-        # Build default assets based on configuration
         build_default_assets_bin()
         esptool_py_flash_to_partition(flash "assets" "${GENERATED_ASSETS_LOCAL_FILE}")
         message(STATUS "Generated default assets flash configured: ${GENERATED_ASSETS_LOCAL_FILE} -> assets partition")
     elseif(CONFIG_FLASH_CUSTOM_ASSETS)
-        # Flash custom assets
         get_assets_local_file("${CONFIG_CUSTOM_ASSETS_FILE}" ASSETS_LOCAL_FILE)
         set(CONFIGURED_ASSETS_FILE "${CMAKE_BINARY_DIR}/configured_assets.bin")
         configure_assets_models("${ASSETS_LOCAL_FILE}" "${CONFIGURED_ASSETS_FILE}")
