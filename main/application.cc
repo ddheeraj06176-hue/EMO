@@ -194,9 +194,9 @@ void Application::Initialize() {
             return "TV switched";
         });
 
-  // 5. Indian Music Stream Player Tool (JioSaavn API Search)
-    mcp_server.AddTool("play_music",
-        "Search and play Indian/Bollywood/Punjabi songs by name",
+    // 5. Indian Music Stream Player Tool (JioSaavn API Search - Fixed Tool Name & Memory)
+    mcp_server.AddTool("play_song",
+        "Search and play Indian, Bollywood, Bhojpuri, Punjabi songs by name",
         PropertyList({
             Property("song_name", kPropertyTypeString)
         }),
@@ -231,7 +231,11 @@ void Application::Initialize() {
                 delete ctx;
 
                 std::string api_url = "https://saavn.dev/api/search/songs?query=" + query + "&limit=1";
-                char response_buffer[4096] = {0};
+                char* response_buffer = (char*)calloc(1, 4096);
+                if (!response_buffer) {
+                    vTaskDelete(NULL);
+                    return;
+                }
 
                 esp_http_client_config_t config = {};
                 config.url = api_url.c_str();
@@ -246,7 +250,7 @@ void Application::Initialize() {
 
                 if (err == ESP_OK) {
                     esp_http_client_fetch_headers(client);
-                    int read_len = esp_http_client_read_response(client, response_buffer, sizeof(response_buffer) - 1);
+                    int read_len = esp_http_client_read_response(client, response_buffer, 4095);
                     if (read_len > 0) {
                         response_buffer[read_len] = '\0';
                         cJSON* root = cJSON_Parse(response_buffer);
@@ -262,7 +266,6 @@ void Application::Initialize() {
 
                                 cJSON* download_url = cJSON_GetObjectItem(first_song, "downloadUrl");
                                 if (download_url && cJSON_IsArray(download_url)) {
-                                    // 160kbps ya direct stream link uthana
                                     int count = cJSON_GetArraySize(download_url);
                                     cJSON* best_url = cJSON_GetArrayItem(download_url, count > 2 ? 2 : count - 1);
                                     cJSON* link = best_url ? cJSON_GetObjectItem(best_url, "url") : nullptr;
@@ -276,6 +279,7 @@ void Application::Initialize() {
                     }
                 }
                 esp_http_client_cleanup(client);
+                free(response_buffer);
 
                 if (!audio_url.empty()) {
                     ESP_LOGI("Music", "Playing track: %s, URL: %s", track_name.c_str(), audio_url.c_str());
