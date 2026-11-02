@@ -25,6 +25,7 @@
 #include <cstring>
 #include <limits>
 #include <esp_http_client.h>
+#include <esp_crt_bundle.h>
 
 #define TAG "Application"
 
@@ -194,7 +195,7 @@ void Application::Initialize() {
             return "TV switched";
         });
 
-    // 5. Indian Music Stream Player Tool (JioSaavn API Search - Fixed Tool Name & Memory)
+ // 5. Indian Music Stream Player Tool (Reliable API + DNS fix)
     mcp_server.AddTool("play_song",
         "Search and play Indian, Bollywood, Bhojpuri, Punjabi songs by name",
         PropertyList({
@@ -206,14 +207,13 @@ void Application::Initialize() {
                 return "Song name missing";
             }
 
-            // Gaane ke naam ki spaces ko '%20' mein convert karna
+            // Clean query: spaces to %20
             std::string encoded_song = "";
             for (char c : song_name) {
                 if (c == ' ') encoded_song += "%20";
                 else encoded_song += c;
             }
 
-            // Screen par notification show karna
             Schedule([this, song_name]() {
                 auto display = Board::GetInstance().GetDisplay();
                 if (display) {
@@ -223,14 +223,14 @@ void Application::Initialize() {
                 }
             });
 
-            // Background task mein search aur play trigger karna taaki main thread block na ho
             xTaskCreate([](void* arg) {
                 auto* ctx = static_cast<std::pair<Application*, std::string>*>(arg);
                 Application* app = ctx->first;
                 std::string query = ctx->second;
                 delete ctx;
 
-                std::string api_url = "https://saavn.dev/api/search/songs?query=" + query + "&limit=1";
+                // Alternate reliable endpoint
+                std::string api_url = "https://saavn.me/search/songs?query=" + query + "&page=1&limit=1";
                 char* response_buffer = (char*)calloc(1, 4096);
                 if (!response_buffer) {
                     vTaskDelete(NULL);
@@ -239,8 +239,9 @@ void Application::Initialize() {
 
                 esp_http_client_config_t config = {};
                 config.url = api_url.c_str();
-                config.timeout_ms = 6000;
+                config.timeout_ms = 8000;
                 config.skip_cert_common_name_check = true;
+                config.crt_bundle_attach = esp_crt_bundle_attach;
 
                 esp_http_client_handle_t client = esp_http_client_init(&config);
                 esp_err_t err = esp_http_client_open(client, 0);
@@ -277,6 +278,8 @@ void Application::Initialize() {
                             cJSON_Delete(root);
                         }
                     }
+                } else {
+                    ESP_LOGE("Music", "HTTP open failed: %s", esp_err_to_name(err));
                 }
                 esp_http_client_cleanup(client);
                 free(response_buffer);
@@ -294,7 +297,7 @@ void Application::Initialize() {
                         app->StartNotification(audio_url, dummy_subs);
                     });
                 } else {
-                    ESP_LOGW("Music", "Song not found on Saavn API");
+                    ESP_LOGW("Music", "Song not found or DNS failed");
                     app->Schedule([]() {
                         auto display = Board::GetInstance().GetDisplay();
                         if (display) {
