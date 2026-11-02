@@ -119,7 +119,7 @@ void Application::Initialize() {
     auto& mcp_server = McpServer::GetInstance();
     mcp_server.AddCommonTools();
     mcp_server.AddUserOnlyTools();
-   // Math & Physics Equation Display Tool
+  // Math & Physics Equation Display Tool
     mcp_server.AddTool("show_math_solution",
         "Display step-by-step math or physics equation solutions on the screen",
         PropertyList({
@@ -129,11 +129,38 @@ void Application::Initialize() {
             std::string solution = properties["solution"].value<std::string>();
             auto display = Board::GetInstance().GetDisplay();
             if (display && !solution.empty()) {
+                // 1. आँखों को तुरंत छिपाएँ
+                display->SetEmojiBoxVisible(false);
+
+                // 2. 15 सेकंड के लिए सॉल्यूशन दिखाएँ
                 display->ShowNotification(solution.c_str(), 15000);
+
+                // 3. 15 सेकंड बाद आँखों को वापस लाने के लिए टाइमर
+                static esp_timer_handle_t restore_timer = nullptr;
+                if (restore_timer != nullptr) {
+                    esp_timer_stop(restore_timer);
+                    esp_timer_delete(restore_timer);
+                    restore_timer = nullptr;
+                }
+
+                esp_timer_create_args_t timer_args = {
+                    .callback = [](void* arg) {
+                        auto d = static_cast<Display*>(arg);
+                        if (d) {
+                            d->SetEmojiBoxVisible(true);
+                        }
+                    },
+                    .arg = display,
+                    .dispatch_method = ESP_TIMER_TASK,
+                    .name = "restore_eyes",
+                    .skip_unhandled_events = true
+                };
+                esp_timer_create(&timer_args, &restore_timer);
+                esp_timer_start_once(restore_timer, 15000 * 1000); // 15 सेकंड (माइक्रोसेकंड में)
             }
             return "Solution displayed on screen";
-        });
-   
+        }); 
+ 
     // 1. Light 1
     mcp_server.AddTool("control_light1", "Turn Light 1 on or off",
         PropertyList(),
