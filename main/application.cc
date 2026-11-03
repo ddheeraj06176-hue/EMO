@@ -195,71 +195,66 @@ void Application::Initialize() {
             return "TV switched";
         });
 
- // 5. Indian Music Stream Player Tool (Reliable API + DNS fix)
-    mcp_server.AddTool("play_song",
-        "Search and play Indian, Bollywood, Bhojpuri, Punjabi songs by name",
-        PropertyList({
-            Property("song_name", kPropertyTypeString)
-        }),
-        [this](const PropertyList& properties) -> ToolResult {
-            std::string song_name = properties["song_name"].value<std::string>();
-            if (song_name.empty()) {
-                return "Song name missing";
+      mcp_server.AddTool("play_song", "Play a music song by name", [this](const cJSON* arguments) -> std::string {
+        cJSON* query_item = cJSON_GetObjectItem(arguments, "query");
+        std::string query = (query_item && cJSON_IsString(query_item)) ? query_item->valuestring : "";
+
+        if (query.empty()) {
+            query = "295";
+        }
+
+        xTaskCreate([](void* arg) {
+            std::string* q_ptr = static_cast<std::string*>(arg);
+            std::string query = *q_ptr;
+            delete q_ptr;
+
+            // Spaces ko '+' se replace karo taaki URL valid rahe
+            std::string clean_query = "";
+            for (char c : query) {
+                if (c == ' ') clean_query += "+";
+                else clean_query += c;
             }
+            if (clean_query.empty()) clean_query = "295";
 
-            // Clean query: spaces to %20
-            std::string encoded_song = "";
-            for (char c : song_name) {
-                if (c == ' ') encoded_song += "%20";
-                else encoded_song += c;
-            }
+            std::string api_url = "https://jiosaavn-api-privateindex.vercel.app/search/songs?query=" + clean_query + "&page=1&limit=1";
+            ESP_LOGI("Music", "Fetching API: %s", api_url.c_str());
 
-            Schedule([this, song_name]() {
-                auto display = Board::GetInstance().GetDisplay();
-                if (display) {
-                    display->SetEmotion("happy");
-                    std::string msg = "Searching: " + song_name;
-                    display->ShowNotification(msg.c_str(), 4000);
-                }
-            });
+            esp_http_client_config_t config = {};
+            config.url = api_url.c_str();
+            config.timeout_ms = 8000;
+            config.crt_bundle_attach = esp_crt_bundle_attach;
+            config.buffer_size = 4096;
+            config.buffer_size_tx = 1024;
 
-            xTaskCreate([](void* arg) {
-                auto* ctx = static_cast<std::pair<Application*, std::string>*>(arg);
-                Application* app = ctx->first;
-                std::string query = ctx->second;
-                delete ctx;
+            esp_http_client_handle_t client = esp_http_client_init(&config);
+            esp_err_t err = esp_http_client_open(client, 0);
 
-           // Vercel edge endpoint (No timeout, fast Indian mirror)
-                std::string api_url = "https://jiosaavn-api-privateindex.vercel.app/search/songs?query=" + query + "&page=1&limit=1";
+            std::string audio_url = "";
+            std::string track_name = query;
+
+            if (err == ESP_OK) {
+                esp_http_client_fetch_headers(client);
+                int status_code = esp_http_client_get_status_code(client);
+                ESP_LOGI("Music", "HTTP Status = %d", status_code);
+
                 char* response_buffer = (char*)calloc(1, 4096);
-                if (!response_buffer) {
-                    vTaskDelete(NULL);
-                    return;
-                }
-
-                esp_http_client_config_t config = {};
-                config.url = api_url.c_str();
-                config.timeout_ms = 8000;
-                config.crt_bundle_attach = esp_crt_bundle_attach;
-                config.buffer_size = 4096;
-                config.buffer_size_tx = 1024;
-
-                esp_http_client_handle_t client = esp_http_client_init(&config);
-                esp_err_t err = esp_http_client_open(client, 0);  
-              
-                std::string audio_url = "";
-                std::string track_name = query;
-
-                if (err == ESP_OK) {
-                    esp_http_client_fetch_headers(client);
+                if (response_buffer) {
                     int read_len = esp_http_client_read_response(client, response_buffer, 4095);
                     if (read_len > 0) {
                         response_buffer[read_len] = '\0';
+                        ESP_LOGI("Music", "API Response: %.150s", response_buffer);
+
                         cJSON* root = cJSON_Parse(response_buffer);
                         if (root) {
                             cJSON* data = cJSON_GetObjectItem(root, "data");
-                            cJSON* results = data ? cJSON_GetObjectItem(data, "results") : nullptr;
-                            if (results && cJSON_GetArraySize(results) > 0) {
+                            cJSON* results = nullptr;
+                            if (data && cJSON_IsArray(data)) {
+                                results = data;
+                            } else if (data) {
+                                results = cJSON_GetObjectItem(data, "results");
+                            }
+
+                            if (results && cJSON_IsArray(results) && cJSON_GetArraySize(results) > 0) {
                                 cJSON* first_song = cJSON_GetArrayItem(results, 0);
                                 cJSON* name_item = cJSON_GetObjectItem(first_song, "name");
                                 if (name_item && cJSON_IsString(name_item)) {
@@ -279,38 +274,26 @@ void Application::Initialize() {
                             cJSON_Delete(root);
                         }
                     }
-                } else {
-                    ESP_LOGE("Music", "HTTP open failed: %s", esp_err_to_name(err));
+                    free(response_buffer);
                 }
-                esp_http_client_cleanup(client);
-                free(response_buffer);
+            } else {
+                ESP_LOGE("Music", "HTTP open failed: %s", esp_err_to_name(err));
+            }
+            esp_http_client_cleanup(client);
 
-                if (!audio_url.empty()) {
-                    ESP_LOGI("Music", "Playing track: %s, URL: %s", track_name.c_str(), audio_url.c_str());
-                    app->Schedule([app, audio_url, track_name]() {
-                        auto display = Board::GetInstance().GetDisplay();
-                        if (display) {
-                            display->SetEmotion("happy");
-                            std::string msg = "Playing: " + track_name;
-                            display->ShowNotification(msg.c_str(), 5000);
-                        }
-                        std::vector<NotifySubtitle> dummy_subs;
-                        app->StartNotification(audio_url, dummy_subs);
-                    });
-                } else {
-                    ESP_LOGW("Music", "Song not found or DNS failed");
-                    app->Schedule([]() {
-                        auto display = Board::GetInstance().GetDisplay();
-                        if (display) {
-                            display->ShowNotification("Song Not Found", 3000);
-                        }
-                    });
-                }
-                vTaskDelete(NULL);
-            }, "music_fetch_task", 4096 * 2, new std::pair<Application*, std::string>(this, encoded_song), 5, NULL);
+            if (!audio_url.empty()) {
+                ESP_LOGI("Music", "Playing: %s (%s)", track_name.c_str(), audio_url.c_str());
+                auto& app = Application::GetInstance();
+                app.PlaySound(audio_url);
+            } else {
+                ESP_LOGW("Music", "Song not found or empty URL");
+            }
 
-            return "Searching and playing song";
-        });
+            vTaskDelete(NULL);
+        }, "music_task", 8192, new std::string(query), 4, NULL);
+
+        return "Playing " + query;
+    });
 
     // Set network event callback for UI updates and network state handling
     board.SetNetworkEventCallback([this](NetworkEvent event, const std::string& data) {
