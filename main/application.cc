@@ -196,7 +196,7 @@ void Application::Initialize() {
         });
 
     mcp_server.AddTool("play_song", "Play a music song by name", 
-        PropertyList({
+        PropertyList(std::vector<Property>{
             Property("query", "The name of the song to search and play", kPropertyTypeString, true)
         }),
         [this](const cJSON* arguments) -> std::string {
