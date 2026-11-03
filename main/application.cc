@@ -216,8 +216,8 @@ void Application::Initialize() {
                 }
                 if (clean_query.empty()) clean_query = "295";
                  
-              // JioSaavn Search API (Stable Vercel Global Edge)
-                std::string api_url = "https://jio-saavn-api.vercel.app/search/songs?query=" + clean_query + "&page=1&limit=1";
+            // JioSaavn Search API
+                std::string api_url = "https://jio-saavn-api.vercel.app/api/search/songs?query=" + clean_query + "&page=1&limit=1";
                 ESP_LOGI("Music", "Fetching API: %s", api_url.c_str());
 
                 esp_http_client_config_t config = {};
