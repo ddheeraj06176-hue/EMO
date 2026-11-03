@@ -216,7 +216,7 @@ void Application::Initialize() {
                 }
                 if (clean_query.empty()) clean_query = "295";
                  
-                std::string api_url = "https://saavn.dev/api/search/songs?query=" + clean_query + "&page=1&limit=1";
+               std::string api_url = "https://jiosaavn-api-flax.vercel.app/api/search/songs?query=" + clean_query + "&page=1&limit=1";
                 ESP_LOGI("Music", "Fetching API: %s", api_url.c_str());
 
                 esp_http_client_config_t config = {};
