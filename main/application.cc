@@ -195,14 +195,8 @@ void Application::Initialize() {
             return "TV switched";
         });
 
-   mcp_server.AddTool("play_song", "Play a music song by name", PropertyList{}, [this](const cJSON* arguments) -> std::string {
-        cJSON* query_item = cJSON_GetObjectItem(arguments, "query");
-        std::string query = (query_item && cJSON_IsString(query_item)) ? query_item->valuestring : "";
-
-        if (query.empty()) {
-            query = "295";
-        }
-
+ mcp_server.AddTool("play_song", "Play a music song by name", [this](const PropertyList& properties) -> ReturnResult {
+        // Baaki task aur HTTP logic
         xTaskCreate([](void* arg) {
             std::string* q_ptr = static_cast<std::string*>(arg);
             std::string query = *q_ptr;
@@ -289,11 +283,11 @@ void Application::Initialize() {
             }
 
             vTaskDelete(NULL);
-        }, "music_task", 8192, new std::string(query), 4, NULL);
+        }, "music_task", 8192, new std::string("295"), 4, NULL);
 
-        return "Playing " + query;
+        return true;
     });
-
+  
     // Set network event callback for UI updates and network state handling
     board.SetNetworkEventCallback([this](NetworkEvent event, const std::string& data) {
         auto display = Board::GetInstance().GetDisplay();
