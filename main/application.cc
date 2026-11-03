@@ -195,19 +195,15 @@ void Application::Initialize() {
             return "TV switched";
         });
 
-mcp_server.AddTool("play_song", "Play a music song by name",
+    mcp_server.AddTool("play_song", "Play a music song by name",
         PropertyList({
             Property("query", kPropertyTypeString)
         }),
         [this](const PropertyList& properties) -> ToolResult {
-            std::string query = "";
-            if (properties.find("query") != properties.end()) {
-                query = properties["query"].value<std::string>();
-            }
+            std::string query = properties["query"].value<std::string>();
             if (query.empty()) {
                 query = "295";
             }
-
             xTaskCreate([](void* arg) {
                 std::string* q_ptr = static_cast<std::string*>(arg);
                 std::string query = *q_ptr;
