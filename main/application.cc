@@ -229,24 +229,23 @@ void Application::Initialize() {
                 std::string query = ctx->second;
                 delete ctx;
 
-             // Sabse fast aur reliable instance
-                std::string api_url = "https://saavn.sumit.co/api/search/songs?query=" + query + "&page=1&limit=1";
+           // Vercel edge endpoint (No timeout, fast Indian mirror)
+                std::string api_url = "https://jiosaavn-api-privateindex.vercel.app/search/songs?query=" + query + "&page=1&limit=1";
                 char* response_buffer = (char*)calloc(1, 4096);
                 if (!response_buffer) {
                     vTaskDelete(NULL);
                     return;
                 }
 
-                 esp_http_client_config_t config = {};
+                esp_http_client_config_t config = {};
                 config.url = api_url.c_str();
-                config.timeout_ms = 10000;
+                config.timeout_ms = 8000;
                 config.crt_bundle_attach = esp_crt_bundle_attach;
-                config.buffer_size = 2048;
+                config.buffer_size = 4096;
                 config.buffer_size_tx = 1024;
 
                 esp_http_client_handle_t client = esp_http_client_init(&config);
-                esp_err_t err = esp_http_client_open(client, 0);
-
+                esp_err_t err = esp_http_client_open(client, 0);  
               
                 std::string audio_url = "";
                 std::string track_name = query;
