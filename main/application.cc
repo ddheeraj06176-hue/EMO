@@ -201,10 +201,8 @@ mcp_server.AddTool("play_song", "Play a music song by name",
         }),
         [this](const PropertyList& properties) -> ToolResult {
             std::string query = "";
-            try {
+            if (properties.find("query") != properties.end()) {
                 query = properties["query"].value<std::string>();
-            } catch (...) {
-                query = "295";
             }
             if (query.empty()) {
                 query = "295";
