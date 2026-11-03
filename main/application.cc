@@ -202,7 +202,7 @@ void Application::Initialize() {
         [this](const PropertyList& properties) -> ToolResult {
             std::string query = properties["query"].value<std::string>();
             if (query.empty()) {
-                query = "295";
+                query = "Faded Alan Walker";
             }
             xTaskCreate([](void* arg) {
                 std::string* q_ptr = static_cast<std::string*>(arg);
@@ -212,9 +212,10 @@ void Application::Initialize() {
                 std::string clean_query = "";
                 for (char c : query) {
                     if (c == ' ') clean_query += "+";
-                    else clean_query += c;
+                    else if (c != '\r' && c != '\n') clean_query += c;
                 }
-                if (clean_query.empty()) clean_query = "295";
+                if (clean_query.empty()) clean_query = "Faded+Alan+Walker";
+
                 // JioSaavn Search API (Active Working Mirror)
                 std::string api_url = "https://jiosaavn-api-privatecvc2.vercel.app/search/songs?query=" + clean_query + "&page=1&limit=1";
                 ESP_LOGI("Music", "Fetching API: %s", api_url.c_str());
@@ -223,7 +224,7 @@ void Application::Initialize() {
                 config.url = api_url.c_str();
                 config.timeout_ms = 15000;
                 config.crt_bundle_attach = esp_crt_bundle_attach;
-                config.buffer_size = 4096;
+                config.buffer_size = 8192;
                 config.buffer_size_tx = 1024;
 
                 esp_http_client_handle_t client = esp_http_client_init(&config);
@@ -237,9 +238,11 @@ void Application::Initialize() {
                     int status_code = esp_http_client_get_status_code(client);
                     ESP_LOGI("Music", "HTTP Status = %d", status_code);
 
-                    char* response_buffer = (char*)calloc(1, 4096);
+                    // 8KB buffer to prevent JSON truncation
+                    const int buf_size = 8192;
+                    char* response_buffer = (char*)calloc(1, buf_size);
                     if (response_buffer) {
-                        int read_len = esp_http_client_read_response(client, response_buffer, 4095);
+                        int read_len = esp_http_client_read_response(client, response_buffer, buf_size - 1);
                         if (read_len > 0) {
                             response_buffer[read_len] = '\0';
                             ESP_LOGI("Music", "API Response: %.150s", response_buffer);
@@ -257,21 +260,33 @@ void Application::Initialize() {
                                 if (results && cJSON_IsArray(results) && cJSON_GetArraySize(results) > 0) {
                                     cJSON* first_song = cJSON_GetArrayItem(results, 0);
                                     cJSON* name_item = cJSON_GetObjectItem(first_song, "name");
+                                    if (!name_item) name_item = cJSON_GetObjectItem(first_song, "song");
                                     if (name_item && cJSON_IsString(name_item)) {
                                         track_name = name_item->valuestring;
                                     }
 
-                                    cJSON* download_url = cJSON_GetObjectItem(first_song, "downloadUrl");
+                                    // Check both downloadUrl and download_url
+                                    cJSON* download_url = cJSON_GetObjectItem(first_song, "download_url");
+                                    if (!download_url) download_url = cJSON_GetObjectItem(first_song, "downloadUrl");
+
                                     if (download_url && cJSON_IsArray(download_url)) {
                                         int count = cJSON_GetArraySize(download_url);
+                                        // Pick medium/high quality (usually index 2 or last)
                                         cJSON* best_url = cJSON_GetArrayItem(download_url, count > 2 ? 2 : count - 1);
-                                        cJSON* link = best_url ? cJSON_GetObjectItem(best_url, "url") : nullptr;
-                                        if (link && cJSON_IsString(link)) {
-                                            audio_url = link->valuestring;
+                                        if (best_url) {
+                                            cJSON* link = cJSON_GetObjectItem(best_url, "link");
+                                            if (!link) link = cJSON_GetObjectItem(best_url, "url");
+                                            if (link && cJSON_IsString(link)) {
+                                                audio_url = link->valuestring;
+                                            }
                                         }
+                                    } else if (download_url && cJSON_IsString(download_url)) {
+                                        audio_url = download_url->valuestring;
                                     }
                                 }
                                 cJSON_Delete(root);
+                            } else {
+                                ESP_LOGE("Music", "cJSON_Parse failed on response!");
                             }
                         }
                         free(response_buffer);
@@ -294,6 +309,7 @@ void Application::Initialize() {
 
             return "Playing " + query;
         });
+
    
     // Set network event callback for UI updates and network state handling
     board.SetNetworkEventCallback([this](NetworkEvent event, const std::string& data) {
