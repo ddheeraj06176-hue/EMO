@@ -195,7 +195,7 @@ void Application::Initialize() {
             return "TV switched";
         });
 
-    mcp_server.AddTool("play_song", "Play a music song by name", [this](const cJSON* arguments) -> std::string {
+   mcp_server.AddTool("play_song", "Play a music song by name", PropertyList{}, [this](const cJSON* arguments) -> std::string {
         cJSON* query_item = cJSON_GetObjectItem(arguments, "query");
         std::string query = (query_item && cJSON_IsString(query_item)) ? query_item->valuestring : "";
 
