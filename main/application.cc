@@ -195,105 +195,108 @@ void Application::Initialize() {
             return "TV switched";
         });
 
-      mcp_server.AddTool("play_song", "Play a music song by name", [this](const cJSON* arguments) -> std::string {
-        cJSON* query_item = cJSON_GetObjectItem(arguments, "query");
-        std::string query = (query_item && cJSON_IsString(query_item)) ? query_item->valuestring : "";
+    mcp_server.AddTool("play_song", "Play a music song by name", 
+        PropertyList({
+            Property("query", "The name of the song to search and play", kPropertyTypeString, true)
+        }),
+        [this](const cJSON* arguments) -> std::string {
+            cJSON* query_item = cJSON_GetObjectItem(arguments, "query");
+            std::string query = (query_item && cJSON_IsString(query_item)) ? query_item->valuestring : "";
 
-        if (query.empty()) {
-            query = "295";
-        }
-
-        xTaskCreate([](void* arg) {
-            std::string* q_ptr = static_cast<std::string*>(arg);
-            std::string query = *q_ptr;
-            delete q_ptr;
-
-            // Spaces ko '+' se replace karo taaki URL valid rahe
-            std::string clean_query = "";
-            for (char c : query) {
-                if (c == ' ') clean_query += "+";
-                else clean_query += c;
+            if (query.empty()) {
+                query = "295";
             }
-            if (clean_query.empty()) clean_query = "295";
 
-            std::string api_url = "https://jiosaavn-api-privateindex.vercel.app/search/songs?query=" + clean_query + "&page=1&limit=1";
-            ESP_LOGI("Music", "Fetching API: %s", api_url.c_str());
+            xTaskCreate([](void* arg) {
+                std::string* q_ptr = static_cast<std::string*>(arg);
+                std::string query = *q_ptr;
+                delete q_ptr;
 
-            esp_http_client_config_t config = {};
-            config.url = api_url.c_str();
-            config.timeout_ms = 8000;
-            config.crt_bundle_attach = esp_crt_bundle_attach;
-            config.buffer_size = 4096;
-            config.buffer_size_tx = 1024;
+                std::string clean_query = "";
+                for (char c : query) {
+                    if (c == ' ') clean_query += "+";
+                    else clean_query += c;
+                }
+                if (clean_query.empty()) clean_query = "295";
 
-            esp_http_client_handle_t client = esp_http_client_init(&config);
-            esp_err_t err = esp_http_client_open(client, 0);
+                std::string api_url = "https://jiosaavn-api-privateindex.vercel.app/search/songs?query=" + clean_query + "&page=1&limit=1";
+                ESP_LOGI("Music", "Fetching API: %s", api_url.c_str());
 
-            std::string audio_url = "";
-            std::string track_name = query;
+                esp_http_client_config_t config = {};
+                config.url = api_url.c_str();
+                config.timeout_ms = 8000;
+                config.crt_bundle_attach = esp_crt_bundle_attach;
+                config.buffer_size = 4096;
+                config.buffer_size_tx = 1024;
 
-            if (err == ESP_OK) {
-                esp_http_client_fetch_headers(client);
-                int status_code = esp_http_client_get_status_code(client);
-                ESP_LOGI("Music", "HTTP Status = %d", status_code);
+                esp_http_client_handle_t client = esp_http_client_init(&config);
+                esp_err_t err = esp_http_client_open(client, 0);
 
-                char* response_buffer = (char*)calloc(1, 4096);
-                if (response_buffer) {
-                    int read_len = esp_http_client_read_response(client, response_buffer, 4095);
-                    if (read_len > 0) {
-                        response_buffer[read_len] = '\0';
-                        ESP_LOGI("Music", "API Response: %.150s", response_buffer);
+                std::string audio_url = "";
+                std::string track_name = query;
 
-                        cJSON* root = cJSON_Parse(response_buffer);
-                        if (root) {
-                            cJSON* data = cJSON_GetObjectItem(root, "data");
-                            cJSON* results = nullptr;
-                            if (data && cJSON_IsArray(data)) {
-                                results = data;
-                            } else if (data) {
-                                results = cJSON_GetObjectItem(data, "results");
-                            }
+                if (err == ESP_OK) {
+                    esp_http_client_fetch_headers(client);
+                    int status_code = esp_http_client_get_status_code(client);
+                    ESP_LOGI("Music", "HTTP Status = %d", status_code);
 
-                            if (results && cJSON_IsArray(results) && cJSON_GetArraySize(results) > 0) {
-                                cJSON* first_song = cJSON_GetArrayItem(results, 0);
-                                cJSON* name_item = cJSON_GetObjectItem(first_song, "name");
-                                if (name_item && cJSON_IsString(name_item)) {
-                                    track_name = name_item->valuestring;
+                    char* response_buffer = (char*)calloc(1, 4096);
+                    if (response_buffer) {
+                        int read_len = esp_http_client_read_response(client, response_buffer, 4095);
+                        if (read_len > 0) {
+                            response_buffer[read_len] = '\0';
+                            ESP_LOGI("Music", "API Response: %.150s", response_buffer);
+
+                            cJSON* root = cJSON_Parse(response_buffer);
+                            if (root) {
+                                cJSON* data = cJSON_GetObjectItem(root, "data");
+                                cJSON* results = nullptr;
+                                if (data && cJSON_IsArray(data)) {
+                                    results = data;
+                                } else if (data) {
+                                    results = cJSON_GetObjectItem(data, "results");
                                 }
 
-                                cJSON* download_url = cJSON_GetObjectItem(first_song, "downloadUrl");
-                                if (download_url && cJSON_IsArray(download_url)) {
-                                    int count = cJSON_GetArraySize(download_url);
-                                    cJSON* best_url = cJSON_GetArrayItem(download_url, count > 2 ? 2 : count - 1);
-                                    cJSON* link = best_url ? cJSON_GetObjectItem(best_url, "url") : nullptr;
-                                    if (link && cJSON_IsString(link)) {
-                                        audio_url = link->valuestring;
+                                if (results && cJSON_IsArray(results) && cJSON_GetArraySize(results) > 0) {
+                                    cJSON* first_song = cJSON_GetArrayItem(results, 0);
+                                    cJSON* name_item = cJSON_GetObjectItem(first_song, "name");
+                                    if (name_item && cJSON_IsString(name_item)) {
+                                        track_name = name_item->valuestring;
+                                    }
+
+                                    cJSON* download_url = cJSON_GetObjectItem(first_song, "downloadUrl");
+                                    if (download_url && cJSON_IsArray(download_url)) {
+                                        int count = cJSON_GetArraySize(download_url);
+                                        cJSON* best_url = cJSON_GetArrayItem(download_url, count > 2 ? 2 : count - 1);
+                                        cJSON* link = best_url ? cJSON_GetObjectItem(best_url, "url") : nullptr;
+                                        if (link && cJSON_IsString(link)) {
+                                            audio_url = link->valuestring;
+                                        }
                                     }
                                 }
+                                cJSON_Delete(root);
                             }
-                            cJSON_Delete(root);
                         }
+                        free(response_buffer);
                     }
-                    free(response_buffer);
+                } else {
+                    ESP_LOGE("Music", "HTTP open failed: %s", esp_err_to_name(err));
                 }
-            } else {
-                ESP_LOGE("Music", "HTTP open failed: %s", esp_err_to_name(err));
-            }
-            esp_http_client_cleanup(client);
+                esp_http_client_cleanup(client);
 
-            if (!audio_url.empty()) {
-                ESP_LOGI("Music", "Playing: %s (%s)", track_name.c_str(), audio_url.c_str());
-                auto& app = Application::GetInstance();
-                app.PlaySound(audio_url);
-            } else {
-                ESP_LOGW("Music", "Song not found or empty URL");
-            }
+                if (!audio_url.empty()) {
+                    ESP_LOGI("Music", "Playing: %s (%s)", track_name.c_str(), audio_url.c_str());
+                    auto& app = Application::GetInstance();
+                    app.PlaySound(audio_url);
+                } else {
+                    ESP_LOGW("Music", "Song not found or empty URL");
+                }
 
-            vTaskDelete(NULL);
-        }, "music_task", 8192, new std::string(query), 4, NULL);
+                vTaskDelete(NULL);
+            }, "music_task", 8192, new std::string(query), 4, NULL);
 
-        return "Playing " + query;
-    });
+            return "Playing " + query;
+        });
 
     // Set network event callback for UI updates and network state handling
     board.SetNetworkEventCallback([this](NetworkEvent event, const std::string& data) {
