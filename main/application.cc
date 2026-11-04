@@ -226,16 +226,17 @@ void Application::Initialize() {
                 if (clean_query.empty()) clean_query = "Faded+Alan+Walker";
 
                 // JioSaavn Search API via official saavn.dev
-               std::string api_url = "https://saavn.dev/api/search/songs?query=" + clean_query + "&page=1&limit=1";
+               
                 ESP_LOGI("Music", "Fetching API: %s", api_url.c_str());
-
+                std::string api_url = "https://saavn.me/api/search/songs?query=" + clean_query + "&page=1&limit=1";
                 esp_http_client_config_t config = {};
                 config.url = api_url.c_str();
                 config.timeout_ms = 15000;
                 config.crt_bundle_attach = esp_crt_bundle_attach;
                 config.buffer_size = 8192;
                 config.buffer_size_tx = 1024;
-
+                config.max_redirection_count = 5;
+           
                 esp_http_client_handle_t client = esp_http_client_init(&config);
                 esp_err_t err = esp_http_client_open(client, 0);
 
