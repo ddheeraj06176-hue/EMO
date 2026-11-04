@@ -235,7 +235,6 @@ void Application::Initialize() {
                 config.crt_bundle_attach = esp_crt_bundle_attach;
                 config.buffer_size = 8192;
                 config.buffer_size_tx = 1024;
-                config.max_redirection_count = 5;
            
                 esp_http_client_handle_t client = esp_http_client_init(&config);
                 esp_err_t err = esp_http_client_open(client, 0);
