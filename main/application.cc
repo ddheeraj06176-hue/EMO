@@ -197,41 +197,9 @@ void Application::Initialize() {
             Property("query", kPropertyTypeString)
         }),
         [this](const PropertyList& properties) -> ToolResult {
-            std::string query = properties["query"].value<std::string>();
-            if (query.empty()) {
-                query = "Faded Alan Walker";
-            }
-
-            xTaskCreate([](void* arg) {
-                std::string* q_ptr = static_cast<std::string*>(arg);
-                std::string raw_query = *q_ptr;
-                delete q_ptr;
-
-                // 1. Force Google & Cloudflare DNS
-                ip_addr_t primary_dns, secondary_dns;
-                ipaddr_aton("8.8.8.8", &primary_dns);
-                dns_setserver(0, &primary_dns);
-                ipaddr_aton("1.1.1.1", &secondary_dns);
-                dns_setserver(1, &secondary_dns);
-
-                // 2. URL percent-encoding
-                std::string clean_query = "";
-                char hex_buf[4];
-                for (unsigned char c : raw_query) {
-                    if (isalnum(c) || c == '-' || c == '_' || c == '.' || c == '~') {
-                        clean_query += c;
-                    } else if (c == ' ') {
-                        clean_query += "%20";
-                    } else if (c != '\r' && c != '\n') {
-                        snprintf(hex_buf, sizeof(hex_buf), "%%%02X", c);
-                        clean_query += hex_buf;
-                    }
-                }
-                if (clean_query.empty()) clean_query = "Faded%20Alan%20Walker";
-
-                // 3. iTunes API Endpoint
-                std::string api_url = "https://itunes.apple.com/search?term=" + clean_query + "&media=music&entity=song&limit=1";
-                ESP_LOGI("Music", "Fetching iTunes API: %s", api_url.c_str());
+           // Deezer Public API (Returns direct standard MP3 stream, Jio safe)
+                std::string api_url = "https://api.deezer.com/search?q=" + clean_query + "&limit=1";
+                ESP_LOGI("Music", "Fetching Deezer API: %s", api_url.c_str());
 
                 esp_http_client_config_t config = {};
                 config.url = api_url.c_str();
@@ -261,16 +229,17 @@ void Application::Initialize() {
                                 response_buffer[read_len] = '\0';
                                 cJSON* root = cJSON_Parse(response_buffer);
                                 if (root) {
-                                    cJSON* results = cJSON_GetObjectItem(root, "results");
-                                    if (results && cJSON_IsArray(results) && cJSON_GetArraySize(results) > 0) {
-                                        cJSON* first_song = cJSON_GetArrayItem(results, 0);
+                                    cJSON* data = cJSON_GetObjectItem(root, "data");
+                                    if (data && cJSON_IsArray(data) && cJSON_GetArraySize(data) > 0) {
+                                        cJSON* first_song = cJSON_GetArrayItem(data, 0);
                                         
-                                        cJSON* track = cJSON_GetObjectItem(first_song, "trackName");
-                                        if (track && cJSON_IsString(track)) {
-                                            track_name = track->valuestring;
+                                        cJSON* title = cJSON_GetObjectItem(first_song, "title");
+                                        if (title && cJSON_IsString(title)) {
+                                            track_name = title->valuestring;
                                         }
 
-                                        cJSON* preview = cJSON_GetObjectItem(first_song, "previewUrl");
+                                        // Direct MP3 preview URL
+                                        cJSON* preview = cJSON_GetObjectItem(first_song, "preview");
                                         if (preview && cJSON_IsString(preview)) {
                                             audio_url = preview->valuestring;
                                         }
@@ -288,7 +257,7 @@ void Application::Initialize() {
                 }
                 esp_http_client_cleanup(client);
 
-                // 4. Play audio safely (Task ke ANDAR)
+                // Play audio safely
                 if (!audio_url.empty()) {
                     auto& app = Application::GetInstance();
                     vTaskDelay(pdMS_TO_TICKS(1500));
@@ -299,7 +268,7 @@ void Application::Initialize() {
 
                     vTaskDelay(pdMS_TO_TICKS(200));
 
-                    ESP_LOGI("Music", "Playing: %s (%s)", track_name.c_str(), audio_url.c_str());
+                    ESP_LOGI("Music", "Playing MP3: %s (%s)", track_name.c_str(), audio_url.c_str());
                     app.StartNotification(audio_url, {});
                 } else {
                     ESP_LOGW("Music", "Song not found");
