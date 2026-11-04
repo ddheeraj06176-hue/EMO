@@ -27,6 +27,7 @@
 #include <esp_http_client.h>
 #include <esp_crt_bundle.h>
 #include <lwip/dns.h>
+#include <esp_netif.h>
 
 #define TAG "Application"
 
@@ -508,9 +509,23 @@ void Application::Run() {
 
 void Application::HandleNetworkConnectedEvent() {
     ESP_LOGI(TAG, "Network connected");
+
+    // Force Google DNS globally on default Wi-Fi interface (bypasses Jio Fiber DNS block)
+    esp_netif_t* netif = esp_netif_get_handle_from_ifkey("WIFI_STA_DEF");
+    if (netif) {
+        esp_netif_dns_info_t dns_info = {};
+        dns_info.ip.u_addr.ip4.addr = ipaddr_addr("8.8.8.8");
+        dns_info.ip.type = ESP_IPADDR_TYPE_V4;
+        esp_netif_set_dns_info(netif, ESP_NETIF_DNS_MAIN, &dns_info);
+
+        dns_info.ip.u_addr.ip4.addr = ipaddr_addr("1.1.1.1");
+        esp_netif_set_dns_info(netif, ESP_NETIF_DNS_BACKUP, &dns_info);
+        ESP_LOGI(TAG, "Custom DNS 8.8.8.8 and 1.1.1.1 applied successfully");
+    }
+
     auto state = GetDeviceState();
 
-   // Wi-Fi connect hote hi ESP-NOW sender ready ho jayega
+    // Wi-Fi connect hote hi ESP-NOW sender ready ho jayega
     InitEmoRelaySender();
    
     if (state == kDeviceStateStarting || state == kDeviceStateWifiConfiguring) {
