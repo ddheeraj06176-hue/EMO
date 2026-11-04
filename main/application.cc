@@ -235,27 +235,25 @@ void Application::Initialize() {
                 }
                 if (clean_query.empty()) clean_query = "Faded%20Alan%20Walker";
 
-               // Multi-Endpoint list with official active saavn.dev & mirror
+            // Jio AirFiber safe endpoints (No .dev domain, exact paths)
                 std::vector<std::string> endpoints = {
-                    "https://saavn.dev/api/search/songs?query=" + clean_query + "&page=1&limit=1",
-                    "https://jiosaavn-api-privatecvc.vercel.app/search/songs?query=" + clean_query + "&page=1&limit=1"
+                    "https://jiosaavn-api-privatecvc.vercel.app/api/search/songs?query=" + clean_query + "&page=1&limit=1",
+                    "https://saavn.me/api/search/songs?query=" + clean_query + "&page=1&limit=1"
                 };
-
                 std::string audio_url = "";
                 std::string track_name = raw_query;
 
                 for (const auto& api_url : endpoints) {
                     ESP_LOGI("Music", "Fetching API: %s", api_url.c_str());
+                esp_http_client_config_t config = {};
+                config.url = api_url.c_str();
+                config.timeout_ms = 10000;
+                config.crt_bundle_attach = esp_crt_bundle_attach;
+                config.buffer_size = 4096;
+                config.buffer_size_tx = 1024;
 
-                    esp_http_client_config_t config = {};
-                    config.url = api_url.c_str();
-                    config.timeout_ms = 10000;
-                    config.crt_bundle_attach = esp_crt_bundle_attach;
-                    config.buffer_size = 4096;
-                    config.buffer_size_tx = 1024;
-
-                    esp_http_client_handle_t client = esp_http_client_init(&config);
-                    esp_err_t err = esp_http_client_open(client, 0);
+                esp_http_client_handle_t client = esp_http_client_init(&config);
+                esp_http_client_set_redirection(client); // <-- Yeh line 301/302 redirect ko follow kar legi
 
                     if (err == ESP_OK) {
                         esp_http_client_fetch_headers(client);
