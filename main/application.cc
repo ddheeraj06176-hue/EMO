@@ -197,7 +197,7 @@ void Application::Initialize() {
             return "TV switched";
         });
 
-     mcp_server.AddTool("play_song", "Play a music song by name",
+ mcp_server.AddTool("play_song", "Play a music song by name",
         PropertyList({
             Property("query", kPropertyTypeString)
         }),
@@ -212,14 +212,14 @@ void Application::Initialize() {
                 std::string raw_query = *q_ptr;
                 delete q_ptr;
 
-                // Force Google & Cloudflare DNS
+                // 1. Force Google & Cloudflare DNS (Jio Fiber Safe)
                 ip_addr_t primary_dns, secondary_dns;
                 ipaddr_aton("8.8.8.8", &primary_dns);
                 dns_setserver(0, &primary_dns);
                 ipaddr_aton("1.1.1.1", &secondary_dns);
                 dns_setserver(1, &secondary_dns);
 
-                // URL percent-encoding
+                // 2. URL percent-encoding
                 std::string clean_query = "";
                 char hex_buf[4];
                 for (unsigned char c : raw_query) {
@@ -234,7 +234,7 @@ void Application::Initialize() {
                 }
                 if (clean_query.empty()) clean_query = "Faded%20Alan%20Walker";
 
-                // iTunes API Endpoint
+                // 3. iTunes API Endpoint
                 std::string api_url = "https://itunes.apple.com/search?term=" + clean_query + "&media=music&entity=song&limit=1";
                 ESP_LOGI("Music", "Fetching iTunes API: %s", api_url.c_str());
 
@@ -292,19 +292,24 @@ void Application::Initialize() {
                     ESP_LOGE("Music", "HTTP open failed: %s", esp_err_to_name(err));
                 }
                 esp_http_client_cleanup(client);
-                 // Play audio safely jab AI bol chuka ho
+
+                // 4. Play audio safely (Device ke IDLE hone ka wait karo)
                 if (!audio_url.empty()) {
-                    ESP_LOGI("Music", "Waiting for AI speech to finish...");
-                    vTaskDelay(pdMS_TO_TICKS(2500)); // AI ko bolne ka time do taaki busy state clear ho jaye
+                    auto& app = Application::GetInstance();
+                    
+                    ESP_LOGI("Music", "Waiting for device to become IDLE...");
+                    int wait_count = 0;
+                    // Max 7 seconds tak wait karega jab tak AI bolna band na kar de
+                    while (app.GetDeviceState() != kDeviceStateIdle && wait_count < 70) {
+                        vTaskDelay(pdMS_TO_TICKS(100));
+                        wait_count++;
+                    }
 
                     ESP_LOGI("Music", "Playing: %s (%s)", track_name.c_str(), audio_url.c_str());
-                    auto& app = Application::GetInstance();
                     app.StartNotification(audio_url, {});
                 } else {
                     ESP_LOGW("Music", "Song not found");
                 }
-
-                vTaskDelete(NULL);
 
                 vTaskDelete(NULL);
             }, "music_task", 10240, new std::string(query), 4, NULL);
