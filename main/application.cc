@@ -212,12 +212,13 @@ void Application::Initialize() {
                 std::string raw_query = *q_ptr;
                 delete q_ptr;
 
-                // 1. Force Google & Cloudflare DNS (Jio Fiber bypass)
+          // Force Google DNS & Cloudflare DNS (Bypasses Jio Fiber DNS blocking)
                 ip_addr_t primary_dns, secondary_dns;
                 ipaddr_aton("8.8.8.8", &primary_dns);
                 dns_setserver(0, &primary_dns);
                 ipaddr_aton("1.1.1.1", &secondary_dns);
                 dns_setserver(1, &secondary_dns);
+                vTaskDelay(pdMS_TO_TICKS(150)); // DNS switch hone ke liye chhota pause
 
                 // 2. Robust URL percent-encoding (Fixes symbols, spaces & Hindi characters)
                 std::string clean_query = "";
