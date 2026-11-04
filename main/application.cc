@@ -234,8 +234,8 @@ void Application::Initialize() {
                 }
                 if (clean_query.empty()) clean_query = "Faded%20Alan%20Walker";
 
-                // 3. Official JioSaavn Internal API (Never down, No DNS block on Jio)
-                std::string api_url = "https://www.jiosaavn.com/api.php?__call=autocomplete.get&_format=json&_marker=0&cc=in&includeMetaTags=1&query=" + clean_query;
+              // 3. Cleanest Search API (Lightweight JSON, fits in buffer)
+                std::string api_url = "https://www.jiosaavn.com/api.php?__call=search.get&_format=json&_marker=0&cc=in&q=" + clean_query;
                 ESP_LOGI("Music", "Fetching Official API: %s", api_url.c_str());
 
                 esp_http_client_config_t config = {};
@@ -247,8 +247,9 @@ void Application::Initialize() {
 
                 esp_http_client_handle_t client = esp_http_client_init(&config);
                 esp_http_client_set_redirection(client);
+                esp_http_client_set_header(client, "User-Agent", "Mozilla/5.0");
+                
                 esp_err_t err = esp_http_client_open(client, 0);
-
                 std::string audio_url = "";
                 std::string track_name = raw_query;
 
@@ -258,7 +259,7 @@ void Application::Initialize() {
                     ESP_LOGI("Music", "HTTP Status = %d", status_code);
 
                     if (status_code == 200) {
-                        const int buf_size = 4096;
+                        const int buf_size = 8192;
                         char* response_buffer = (char*)calloc(1, buf_size);
                         if (response_buffer) {
                             int read_len = esp_http_client_read_response(client, response_buffer, buf_size - 1);
@@ -266,32 +267,32 @@ void Application::Initialize() {
                                 response_buffer[read_len] = '\0';
                                 cJSON* root = cJSON_Parse(response_buffer);
                                 if (root) {
-                                    cJSON* songs = cJSON_GetObjectItem(root, "songs");
-                                    cJSON* data = nullptr;
-                                    if (songs) {
-                                        data = cJSON_GetObjectItem(songs, "data");
-                                    }
-
-                                    if (data && cJSON_IsArray(data) && cJSON_GetArraySize(data) > 0) {
-                                        cJSON* first_song = cJSON_GetArrayItem(data, 0);
-                                        cJSON* title = cJSON_GetObjectItem(first_song, "title");
+                                    cJSON* results = cJSON_GetObjectItem(root, "results");
+                                    if (results && cJSON_IsArray(results) && cJSON_GetArraySize(results) > 0) {
+                                        cJSON* first_song = cJSON_GetArrayItem(results, 0);
+                                        cJSON* title = cJSON_GetObjectItem(first_song, "song");
+                                        if (!title) title = cJSON_GetObjectItem(first_song, "title");
                                         if (title && cJSON_IsString(title)) {
                                             track_name = title->valuestring;
                                         }
 
-                                        // Extract media preview/audio link
+                                        // Media URL extraction
                                         cJSON* media_url = cJSON_GetObjectItem(first_song, "media_preview_url");
                                         if (media_url && cJSON_IsString(media_url)) {
                                             std::string m_url = media_url->valuestring;
-                                            // preview url se high quality stream link banate hain
                                             size_t pos = m_url.find("_96_p.mp4");
                                             if (pos != std::string::npos) {
-                                                m_url.replace(pos, 9, "_160.mp4");
+                                                m_url.replace(pos, 9, "_96.mp4");
+                                            }
+                                            if (m_url.rfind("http://", 0) == 0) {
+                                                m_url.replace(0, 7, "https://");
                                             }
                                             audio_url = m_url;
                                         }
                                     }
                                     cJSON_Delete(root);
+                                } else {
+                                    ESP_LOGE("Music", "JSON Parse Failed");
                                 }
                             }
                             free(response_buffer);
@@ -301,7 +302,6 @@ void Application::Initialize() {
                     ESP_LOGE("Music", "HTTP open failed: %s", esp_err_to_name(err));
                 }
                 esp_http_client_cleanup(client);
-
                 // 4. Play audio safely
                 if (!audio_url.empty()) {
                     ESP_LOGI("Music", "Playing: %s (%s)", track_name.c_str(), audio_url.c_str());
