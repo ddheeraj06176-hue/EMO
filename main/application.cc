@@ -192,8 +192,7 @@ void Application::Initialize() {
             return "TV switched";
         });
 
-    // 5. Play Song Tool (Apple iTunes Engine + Dynamic Idle Safe Playback)
-    mcp_server.AddTool("play_song", "Play a music song by name",
+   mcp_server.AddTool("play_song", "Play a music song by name",
         PropertyList({
             Property("query", kPropertyTypeString)
         }),
@@ -208,14 +207,14 @@ void Application::Initialize() {
                 std::string raw_query = *q_ptr;
                 delete q_ptr;
 
-                // Force Google & Cloudflare DNS
+                // 1. Force Google & Cloudflare DNS
                 ip_addr_t primary_dns, secondary_dns;
                 ipaddr_aton("8.8.8.8", &primary_dns);
                 dns_setserver(0, &primary_dns);
                 ipaddr_aton("1.1.1.1", &secondary_dns);
                 dns_setserver(1, &secondary_dns);
 
-                // URL percent-encoding
+                // 2. URL percent-encoding
                 std::string clean_query = "";
                 char hex_buf[4];
                 for (unsigned char c : raw_query) {
@@ -230,6 +229,7 @@ void Application::Initialize() {
                 }
                 if (clean_query.empty()) clean_query = "Faded%20Alan%20Walker";
 
+                // 3. iTunes API Endpoint
                 std::string api_url = "https://itunes.apple.com/search?term=" + clean_query + "&media=music&entity=song&limit=1";
                 ESP_LOGI("Music", "Fetching iTunes API: %s", api_url.c_str());
 
@@ -288,19 +288,11 @@ void Application::Initialize() {
                 }
                 esp_http_client_cleanup(client);
 
-              
-            }, "music_task", 10240, new std::string(query), 4, NULL);
-
-            return "Playing " + query;
-        });
-   // Play audio safely
+                // 4. Play audio safely (Task ke ANDAR)
                 if (!audio_url.empty()) {
                     auto& app = Application::GetInstance();
-
-                    // 1. AI ko bolna khatam karne ke liye 1.5s ka delay do
                     vTaskDelay(pdMS_TO_TICKS(1500));
 
-                    // 2. Chat / listening session ko close karke device ko force-IDLE karo
                     app.Schedule([&app]() {
                         app.SetDeviceState(kDeviceStateIdle);
                     });
@@ -314,6 +306,11 @@ void Application::Initialize() {
                 }
 
                 vTaskDelete(NULL);
+            }, "music_task", 10240, new std::string(query), 4, NULL);
+
+            return "Playing " + query;
+        });
+ 
     // Set network event callback
     board.SetNetworkEventCallback([this](NetworkEvent event, const std::string& data) {
         auto display = Board::GetInstance().GetDisplay();
