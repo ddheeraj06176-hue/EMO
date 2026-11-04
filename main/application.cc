@@ -26,6 +26,7 @@
 #include <limits>
 #include <esp_http_client.h>
 #include <esp_crt_bundle.h>
+#include <lwip/dns.h>
 
 #define TAG "Application"
 
@@ -195,7 +196,7 @@ void Application::Initialize() {
             return "TV switched";
         });
 
-    mcp_server.AddTool("play_song", "Play a music song by name",
+  mcp_server.AddTool("play_song", "Play a music song by name",
         PropertyList({
             Property("query", kPropertyTypeString)
         }),
@@ -209,15 +210,21 @@ void Application::Initialize() {
                 std::string query = *q_ptr;
                 delete q_ptr;
 
+                // Force Google DNS & Cloudflare DNS (Bypasses Jio Fiber DNS blocking)
+                ip_addr_t primary_dns, secondary_dns;
+                ipaddr_aton("8.8.8.8", &primary_dns);
+                dns_setserver(0, &primary_dns);
+                ipaddr_aton("1.1.1.1", &secondary_dns);
+                dns_setserver(1, &secondary_dns);
+
                 std::string clean_query = "";
                 for (char c : query) {
                     if (c == ' ') clean_query += "+";
                     else if (c != '\r' && c != '\n') clean_query += c;
                 }
-            if (clean_query.empty()) clean_query = "Faded+Alan+Walker";
+                if (clean_query.empty()) clean_query = "Faded+Alan+Walker";
 
-              
-                // JioSaavn Search API (Active Working Mirror)
+                // JioSaavn Search API via official saavn.dev
                 std::string api_url = "https://saavn.dev/api/search/songs?query=" + clean_query + "&page=1&limit=1";
                 ESP_LOGI("Music", "Fetching API: %s", api_url.c_str());
 
@@ -272,7 +279,6 @@ void Application::Initialize() {
 
                                     if (download_url && cJSON_IsArray(download_url)) {
                                         int count = cJSON_GetArraySize(download_url);
-                                        // Pick medium/high quality (usually index 2 or last)
                                         cJSON* best_url = cJSON_GetArrayItem(download_url, count > 2 ? 2 : count - 1);
                                         if (best_url) {
                                             cJSON* link = cJSON_GetObjectItem(best_url, "link");
@@ -310,7 +316,6 @@ void Application::Initialize() {
 
             return "Playing " + query;
         });
-
    
     // Set network event callback for UI updates and network state handling
     board.SetNetworkEventCallback([this](NetworkEvent event, const std::string& data) {
