@@ -288,15 +288,24 @@ void Application::Initialize() {
                 }
                 esp_http_client_cleanup(client);
 
-                // Play audio safely (AI bolna band kare tab tak wait karo)
+              
+            }, "music_task", 10240, new std::string(query), 4, NULL);
+
+            return "Playing " + query;
+        });
+   // Play audio safely
                 if (!audio_url.empty()) {
                     auto& app = Application::GetInstance();
-                    ESP_LOGI("Music", "Waiting for device to become IDLE...");
-                    int wait_count = 0;
-                    while (app.GetDeviceState() != kDeviceStateIdle && wait_count < 70) {
-                        vTaskDelay(pdMS_TO_TICKS(100));
-                        wait_count++;
-                    }
+
+                    // 1. AI ko bolna khatam karne ke liye 1.5s ka delay do
+                    vTaskDelay(pdMS_TO_TICKS(1500));
+
+                    // 2. Chat / listening session ko close karke device ko force-IDLE karo
+                    app.Schedule([&app]() {
+                        app.SetDeviceState(kDeviceStateIdle);
+                    });
+
+                    vTaskDelay(pdMS_TO_TICKS(200));
 
                     ESP_LOGI("Music", "Playing: %s (%s)", track_name.c_str(), audio_url.c_str());
                     app.StartNotification(audio_url, {});
@@ -305,11 +314,6 @@ void Application::Initialize() {
                 }
 
                 vTaskDelete(NULL);
-            }, "music_task", 10240, new std::string(query), 4, NULL);
-
-            return "Playing " + query;
-        });
-   
     // Set network event callback
     board.SetNetworkEventCallback([this](NetworkEvent event, const std::string& data) {
         auto display = Board::GetInstance().GetDisplay();
