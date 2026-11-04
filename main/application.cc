@@ -214,10 +214,11 @@ void Application::Initialize() {
                     if (c == ' ') clean_query += "+";
                     else if (c != '\r' && c != '\n') clean_query += c;
                 }
-                if (clean_query.empty()) clean_query = "Faded+Alan+Walker";
+            if (clean_query.empty()) clean_query = "Faded+Alan+Walker";
 
+              
                 // JioSaavn Search API (Active Working Mirror)
-                std::string api_url = "https://jiosaavn-api-privatecvc2.vercel.app/search/songs?query=" + clean_query + "&page=1&limit=1";
+                std::string api_url = "https://saavn.dev/api/search/songs?query=" + clean_query + "&page=1&limit=1";
                 ESP_LOGI("Music", "Fetching API: %s", api_url.c_str());
 
                 esp_http_client_config_t config = {};
