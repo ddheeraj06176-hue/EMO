@@ -292,14 +292,19 @@ void Application::Initialize() {
                     ESP_LOGE("Music", "HTTP open failed: %s", esp_err_to_name(err));
                 }
                 esp_http_client_cleanup(client);
-
+                 // Play audio safely jab AI bol chuka ho
                 if (!audio_url.empty()) {
+                    ESP_LOGI("Music", "Waiting for AI speech to finish...");
+                    vTaskDelay(pdMS_TO_TICKS(2500)); // AI ko bolne ka time do taaki busy state clear ho jaye
+
                     ESP_LOGI("Music", "Playing: %s (%s)", track_name.c_str(), audio_url.c_str());
                     auto& app = Application::GetInstance();
                     app.StartNotification(audio_url, {});
                 } else {
                     ESP_LOGW("Music", "Song not found");
                 }
+
+                vTaskDelete(NULL);
 
                 vTaskDelete(NULL);
             }, "music_task", 10240, new std::string(query), 4, NULL);
