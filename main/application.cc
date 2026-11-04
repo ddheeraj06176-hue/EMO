@@ -234,10 +234,10 @@ void Application::Initialize() {
                 }
                 if (clean_query.empty()) clean_query = "Faded%20Alan%20Walker";
 
-                // 3. Multi-Endpoint list for zero-downtime & rate-limit fallback
+               // Multi-Endpoint list with official active saavn.dev & mirror
                 std::vector<std::string> endpoints = {
-                    "https://saavn-api.vercel.app/api/search/songs?query=" + clean_query + "&page=1&limit=1",
-                    "https://jiosaavn-api-2-harsh-patel.onrender.com/api/search/songs?query=" + clean_query + "&page=1&limit=1"
+                    "https://saavn.dev/api/search/songs?query=" + clean_query + "&page=1&limit=1",
+                    "https://jiosaavn-api-privatecvc.vercel.app/search/songs?query=" + clean_query + "&page=1&limit=1"
                 };
 
                 std::string audio_url = "";
