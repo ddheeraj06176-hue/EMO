@@ -1,4 +1,4 @@
-c#include "application.h"
+#include "application.h"
 #include "assets.h"
 #include "assets/lang_config.h"
 #include "audio_codec.h"
