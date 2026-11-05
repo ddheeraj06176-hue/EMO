@@ -193,7 +193,7 @@ void Application::Initialize() {
             return "TV switched";
         });
 
-    // 5. Play Song Tool (Direct High-Speed JioSaavn MP3 Engine)
+    // 5. Play Song Tool (Ultra-Reliable Akamai CDN Engine)
     mcp_server.AddTool("play_song", "Play music or song by title",
         PropertyList({
             Property("query", kPropertyTypeString)
@@ -214,13 +214,13 @@ void Application::Initialize() {
                 // 1. WiFi Performance Mode
                 esp_wifi_set_ps(WIFI_PS_NONE);
 
-   // 2. Force DNS to Google & Cloudflare directly in lwIP
+                // 2. Force DNS to Google & Cloudflare safely in lwIP
                 ip_addr_t dns1, dns2;
                 dns1.addr = ipaddr_addr("8.8.8.8");
                 dns_setserver(0, &dns1);
 
                 dns2.addr = ipaddr_addr("1.1.1.1");
-                dns_setserver(1, &dns2);          
+                dns_setserver(1, &dns2);
 
                 // 3. Clean Query format
                 std::string clean_query = "";
@@ -233,8 +233,8 @@ void Application::Initialize() {
                 }
                 if (clean_query.empty()) clean_query = "Alan+Walker+Faded";
 
-                std::string api_url = "https://saavn.dev/api/search/songs?query=" + clean_query + "&limit=1";
-                ESP_LOGI("Music", "Fetching Saavn API: %s", api_url.c_str());
+                std::string api_url = "https://itunes.apple.com/search?term=" + clean_query + "&entity=song&limit=1";
+                ESP_LOGI("Music", "Fetching API: %s", api_url.c_str());
 
                 esp_http_client_config_t config = {};
                 config.url = api_url.c_str();
@@ -256,7 +256,7 @@ void Application::Initialize() {
                 if (err == ESP_OK) {
                     esp_http_client_fetch_headers(client);
                     int status_code = esp_http_client_get_status_code(client);
-                    ESP_LOGI("Music", "Saavn Status = %d", status_code);
+                    ESP_LOGI("Music", "HTTP Status = %d", status_code);
 
                     if (status_code == 200) {
                         std::string res = "";
@@ -265,35 +265,22 @@ void Application::Initialize() {
                         while ((r = esp_http_client_read(client, chunk, sizeof(chunk) - 1)) > 0) {
                             chunk[r] = '\0';
                             res += chunk;
-                            if (res.length() > 24576) break;
+                            if (res.length() > 32768) break;
                         }
 
                         cJSON* root = cJSON_Parse(res.c_str());
                         if (root) {
-                            cJSON* data = cJSON_GetObjectItem(root, "data");
-                            cJSON* results = data ? cJSON_GetObjectItem(data, "results") : nullptr;
+                            cJSON* results = cJSON_GetObjectItem(root, "results");
                             if (results && cJSON_IsArray(results) && cJSON_GetArraySize(results) > 0) {
                                 cJSON* song = cJSON_GetArrayItem(results, 0);
-                                cJSON* name = cJSON_GetObjectItem(song, "name");
+                                cJSON* name = cJSON_GetObjectItem(song, "trackName");
                                 if (name && cJSON_IsString(name)) {
                                     track_name = name->valuestring;
                                 }
 
-                                cJSON* download_url = cJSON_GetObjectItem(song, "downloadUrl");
-                                if (download_url && cJSON_IsArray(download_url)) {
-                                    int count = cJSON_GetArraySize(download_url);
-                                    for (int i = 0; i < count; i++) {
-                                        cJSON* item = cJSON_GetArrayItem(download_url, i);
-                                        cJSON* quality = cJSON_GetObjectItem(item, "quality");
-                                        cJSON* url = cJSON_GetObjectItem(item, "url");
-                                        if (quality && url && cJSON_IsString(url)) {
-                                            audio_url = url->valuestring;
-                                            if (strcmp(quality->valuestring, "160kbps") == 0 ||
-                                                strcmp(quality->valuestring, "96kbps") == 0) {
-                                                break;
-                                            }
-                                        }
-                                    }
+                                cJSON* preview = cJSON_GetObjectItem(song, "previewUrl");
+                                if (preview && cJSON_IsString(preview)) {
+                                    audio_url = preview->valuestring;
                                 }
                             }
                             cJSON_Delete(root);
@@ -314,10 +301,10 @@ void Application::Initialize() {
 
                     vTaskDelay(pdMS_TO_TICKS(200));
 
-                    ESP_LOGI("Music", "Playing Saavn MP3: %s (%s)", track_name.c_str(), audio_url.c_str());
+                    ESP_LOGI("Music", "Playing Audio: %s (%s)", track_name.c_str(), audio_url.c_str());
                     app.StartNotification(audio_url, {});
                 } else {
-                    ESP_LOGW("Music", "Song not found on Saavn");
+                    ESP_LOGW("Music", "Song not found on endpoint");
                 }
 
                 vTaskDelete(NULL);
