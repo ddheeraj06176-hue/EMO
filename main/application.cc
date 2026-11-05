@@ -1,4 +1,4 @@
-a#include "application.h"
+#include "application.h"
 #include "assets.h"
 #include "assets/lang_config.h"
 #include "audio_codec.h"
@@ -192,26 +192,6 @@ void Application::Initialize() {
             return "TV switched";
         });
 
-   mcp_server.AddTool("play_song", "Play a music song by name",
-application.cc:323:5: error: 'board' does not name a type
-board.StartNetwork();
-application.cc:324:5: error: 'display' does not name a type
-display->UpdateStatusBar(true);
-application.cc:325:1: error: expected declaration before '}' token
-```
-
-### यह एरर क्यों आया?
-`play_song` टूल या `board.SetNetworkEventCallback` के पास **एक एक्स्ट्रा कर्ली ब्रैकेट (`}`) लग गया है**[cite: 3]। 
-
-इस एक्स्ट्रा `}` की वजह से `Application::Initialize()` फ़ंक्शन समय से पहले ही बंद हो गया[cite: 3]। जब फ़ंक्शन पहले ही बंद हो गया, तो `board.StartNetwork()` और `display->UpdateStatusBar(true)` फ़ंक्शन के बाहर (ग्लोबल स्पेस में) आ गए, जहाँ C++ कंपाइलर को लगा कि यह कोई नया टाइप या वेरिएबल है[cite: 3]।
-
----
-
-### इसे ठीक कैसे करना है:
-
-GitHub पर `main/application.cc` खोलें और लाइन 220 से लेकर 330 तक (जहाँ `play_song` शुरू होता है और `Initialize()` खत्म होता है) नीचे दिए गए ब्लॉक से पूरा रिप्लेस कर दें। इसमें ब्रैकेट्स बिल्कुल सही तरीके से बंद हैं:
-
-```cpp
     // 5. Play Song Tool (Deezer MP3 Engine)
     mcp_server.AddTool("play_song", "Play a music song by name",
         PropertyList({
