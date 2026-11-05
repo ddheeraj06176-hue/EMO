@@ -195,12 +195,14 @@ void Application::Initialize() {
 // 5. Play Song Tool (Direct High-Speed JioSaavn MP3 Engine)
     mcp_server.AddTool("play_song", "Play music or song by title",
         PropertyList({
-            Property("query", kPropertyTypeString, "Song name and artist", true)
+            Property("query", kPropertyTypeString)
         }),
         [this](const PropertyList& properties) -> ToolResult {
             std::string query = "";
-            if (properties.HasProperty("query")) {
+            try {
                 query = properties["query"].value<std::string>();
+            } catch (...) {
+                query = "Alan Walker Faded";
             }
             if (query.empty()) {
                 query = "Alan Walker Faded";
