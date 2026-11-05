@@ -214,15 +214,13 @@ void Application::Initialize() {
                 // 1. WiFi Performance Mode
                 esp_wifi_set_ps(WIFI_PS_NONE);
 
-                // 2. Force DNS to Google & Cloudflare directly in lwIP
+   // 2. Force DNS to Google & Cloudflare directly in lwIP
                 ip_addr_t dns1, dns2;
-                dns1.type = IPADDR_TYPE_V4;
-                dns1.u_addr.ip4.addr = ipaddr_addr("8.8.8.8");
+                dns1.addr = ipaddr_addr("8.8.8.8");
                 dns_setserver(0, &dns1);
 
-                dns2.type = IPADDR_TYPE_V4;
-                dns2.u_addr.ip4.addr = ipaddr_addr("1.1.1.1");
-                dns_setserver(1, &dns2);
+                dns2.addr = ipaddr_addr("1.1.1.1");
+                dns_setserver(1, &dns2);          
 
                 // 3. Clean Query format
                 std::string clean_query = "";
