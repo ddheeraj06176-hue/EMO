@@ -192,7 +192,7 @@ void Application::Initialize() {
             return "TV switched";
         });
 
-// 5. Play Song Tool (Jamendo Global API - Native Direct Ogg/Vorbis Stream)
+// 5. Play Song Tool (Direct High-Speed JioSaavn MP3 Engine)
     mcp_server.AddTool("play_song", "Play a music song by name",
         PropertyList({
             Property("query", kPropertyTypeString)
@@ -200,7 +200,7 @@ void Application::Initialize() {
         [this](const PropertyList& properties) -> ToolResult {
             std::string query = properties["query"].value<std::string>();
             if (query.empty()) {
-                query = "Alan Walker";
+                query = "Alan Walker Faded";
             }
 
             xTaskCreate([](void* arg) {
@@ -208,14 +208,17 @@ void Application::Initialize() {
                 std::string raw_query = *q_ptr;
                 delete q_ptr;
 
-                // Force Public DNS
+                // 1. Force No-Sleep on WiFi to stop stuttering
+                esp_wifi_set_ps(WIFI_PS_NONE);
+
+                // 2. DNS Fix
                 ip_addr_t primary_dns, secondary_dns;
                 ipaddr_aton("8.8.8.8", &primary_dns);
                 dns_setserver(0, &primary_dns);
                 ipaddr_aton("1.1.1.1", &secondary_dns);
                 dns_setserver(1, &secondary_dns);
 
-                // Clean Query for API
+                // 3. Query formatting
                 std::string clean_query = "";
                 for (unsigned char c : raw_query) {
                     if (isalnum(c) || c == '-' || c == '_' || c == '.') {
@@ -224,11 +227,11 @@ void Application::Initialize() {
                         clean_query += "+";
                     }
                 }
-                if (clean_query.empty()) clean_query = "Alan+Walker";
+                if (clean_query.empty()) clean_query = "Alan+Walker+Faded";
 
-                // Jamendo Official Open API (audioformat=ogg2 is Native Ogg Vorbis/Opus)
-                std::string api_url = "https://api.jamendo.com/v3.0/tracks/?client_id=56d30c95&format=json&limit=1&namesearch=" + clean_query + "&audioformat=ogg2";
-                ESP_LOGI("Music", "Fetching Jamendo Ogg Stream: %s", api_url.c_str());
+                // JioSaavn Unofficial API (Fast, reliable in India, direct MP3)
+                std::string api_url = "https://saavn.dev/api/search/songs?query=" + clean_query + "&limit=1";
+                ESP_LOGI("Music", "Fetching Saavn API: %s", api_url.c_str());
 
                 esp_http_client_config_t config = {};
                 config.url = api_url.c_str();
@@ -248,35 +251,48 @@ void Application::Initialize() {
                 if (err == ESP_OK) {
                     esp_http_client_fetch_headers(client);
                     int status_code = esp_http_client_get_status_code(client);
-                    ESP_LOGI("Music", "API Status = %d", status_code);
+                    ESP_LOGI("Music", "Saavn Status = %d", status_code);
 
                     if (status_code == 200) {
-                        std::string full_res = "";
+                        std::string res = "";
                         char chunk[1024];
                         int r = 0;
                         while ((r = esp_http_client_read(client, chunk, sizeof(chunk) - 1)) > 0) {
                             chunk[r] = '\0';
-                            full_res += chunk;
-                            if (full_res.length() > 8192) break;
+                            res += chunk;
+                            if (res.length() > 16384) break;
                         }
 
-                        if (!full_res.empty()) {
-                            cJSON* root = cJSON_Parse(full_res.c_str());
-                            if (root) {
-                                cJSON* results = cJSON_GetObjectItem(root, "results");
-                                if (results && cJSON_IsArray(results) && cJSON_GetArraySize(results) > 0) {
-                                    cJSON* first_track = cJSON_GetArrayItem(results, 0);
-                                    cJSON* name = cJSON_GetObjectItem(first_track, "name");
-                                    if (name && cJSON_IsString(name)) {
-                                        track_name = name->valuestring;
-                                    }
-                                    cJSON* audio = cJSON_GetObjectItem(first_track, "audio");
-                                    if (audio && cJSON_IsString(audio)) {
-                                        audio_url = audio->valuestring;
+                        cJSON* root = cJSON_Parse(res.c_str());
+                        if (root) {
+                            cJSON* data = cJSON_GetObjectItem(root, "data");
+                            cJSON* results = data ? cJSON_GetObjectItem(data, "results") : nullptr;
+                            if (results && cJSON_IsArray(results) && cJSON_GetArraySize(results) > 0) {
+                                cJSON* song = cJSON_GetArrayItem(results, 0);
+                                cJSON* name = cJSON_GetObjectItem(song, "name");
+                                if (name && cJSON_IsString(name)) {
+                                    track_name = name->valuestring;
+                                }
+
+                                cJSON* download_url = cJSON_GetObjectItem(song, "downloadUrl");
+                                if (download_url && cJSON_IsArray(download_url)) {
+                                    int count = cJSON_GetArraySize(download_url);
+                                    for (int i = 0; i < count; i++) {
+                                        cJSON* item = cJSON_GetArrayItem(download_url, i);
+                                        cJSON* quality = cJSON_GetObjectItem(item, "quality");
+                                        cJSON* url = cJSON_GetObjectItem(item, "url");
+                                        // Pick standard 96kbps or 160kbps MP3
+                                        if (quality && url && cJSON_IsString(url)) {
+                                            audio_url = url->valuestring;
+                                            if (strcmp(quality->valuestring, "160kbps") == 0 ||
+                                                strcmp(quality->valuestring, "96kbps") == 0) {
+                                                break;
+                                            }
+                                        }
                                     }
                                 }
-                                cJSON_Delete(root);
                             }
+                            cJSON_Delete(root);
                         }
                     }
                 } else {
@@ -284,7 +300,7 @@ void Application::Initialize() {
                 }
                 esp_http_client_cleanup(client);
 
-                // Play native OGG audio safely
+                // Play audio safely
                 if (!audio_url.empty()) {
                     auto& app = Application::GetInstance();
                     vTaskDelay(pdMS_TO_TICKS(1500));
@@ -295,10 +311,10 @@ void Application::Initialize() {
 
                     vTaskDelay(pdMS_TO_TICKS(200));
 
-                    ESP_LOGI("Music", "Playing Ogg: %s (%s)", track_name.c_str(), audio_url.c_str());
+                    ESP_LOGI("Music", "Playing Saavn MP3: %s (%s)", track_name.c_str(), audio_url.c_str());
                     app.StartNotification(audio_url, {});
                 } else {
-                    ESP_LOGW("Music", "Song not found on Jamendo");
+                    ESP_LOGW("Music", "Song not found on Saavn");
                 }
 
                 vTaskDelete(NULL);
