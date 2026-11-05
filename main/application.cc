@@ -193,32 +193,37 @@ void Application::Initialize() {
         });
 
 // 5. Play Song Tool (Direct High-Speed JioSaavn MP3 Engine)
-    mcp_server.AddTool("play_song", "Play a music song by name",
+    mcp_server.AddTool("play_song", "Play music or song by title",
         PropertyList({
-            Property("query", kPropertyTypeString)
+            Property("query", kPropertyTypeString, "Song name and artist", true)
         }),
         [this](const PropertyList& properties) -> ToolResult {
-            std::string query = properties["query"].value<std::string>();
+            std::string query = "";
+            if (properties.HasProperty("query")) {
+                query = properties["query"].value<std::string>();
+            }
             if (query.empty()) {
                 query = "Alan Walker Faded";
             }
+
+            ESP_LOGI("Music", "play_song tool triggered successfully with query: %s", query.c_str());
 
             xTaskCreate([](void* arg) {
                 std::string* q_ptr = static_cast<std::string*>(arg);
                 std::string raw_query = *q_ptr;
                 delete q_ptr;
 
-                // 1. Force No-Sleep on WiFi to stop stuttering
+                // WiFi no sleep to prevent stuttering
                 esp_wifi_set_ps(WIFI_PS_NONE);
 
-                // 2. DNS Fix
+                // DNS
                 ip_addr_t primary_dns, secondary_dns;
                 ipaddr_aton("8.8.8.8", &primary_dns);
                 dns_setserver(0, &primary_dns);
                 ipaddr_aton("1.1.1.1", &secondary_dns);
                 dns_setserver(1, &secondary_dns);
 
-                // 3. Query formatting
+                // Query format
                 std::string clean_query = "";
                 for (unsigned char c : raw_query) {
                     if (isalnum(c) || c == '-' || c == '_' || c == '.') {
@@ -229,7 +234,6 @@ void Application::Initialize() {
                 }
                 if (clean_query.empty()) clean_query = "Alan+Walker+Faded";
 
-                // JioSaavn Unofficial API (Fast, reliable in India, direct MP3)
                 std::string api_url = "https://saavn.dev/api/search/songs?query=" + clean_query + "&limit=1";
                 ESP_LOGI("Music", "Fetching Saavn API: %s", api_url.c_str());
 
@@ -281,7 +285,6 @@ void Application::Initialize() {
                                         cJSON* item = cJSON_GetArrayItem(download_url, i);
                                         cJSON* quality = cJSON_GetObjectItem(item, "quality");
                                         cJSON* url = cJSON_GetObjectItem(item, "url");
-                                        // Pick standard 96kbps or 160kbps MP3
                                         if (quality && url && cJSON_IsString(url)) {
                                             audio_url = url->valuestring;
                                             if (strcmp(quality->valuestring, "160kbps") == 0 ||
@@ -300,7 +303,6 @@ void Application::Initialize() {
                 }
                 esp_http_client_cleanup(client);
 
-                // Play audio safely
                 if (!audio_url.empty()) {
                     auto& app = Application::GetInstance();
                     vTaskDelay(pdMS_TO_TICKS(1500));
