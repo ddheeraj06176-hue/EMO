@@ -192,7 +192,7 @@ void Application::Initialize() {
             return "TV switched";
         });
 
-    // 5. Play Song Tool (Deezer MP3 Engine)
+   // 5. Play Song Tool (Robust iTunes API with Redirects)
     mcp_server.AddTool("play_song", "Play a music song by name",
         PropertyList({
             Property("query", kPropertyTypeString)
@@ -230,8 +230,9 @@ void Application::Initialize() {
                 }
                 if (clean_query.empty()) clean_query = "Faded%20Alan%20Walker";
 
-                std::string api_url = "https://api.deezer.com/search?q=" + clean_query + "&limit=1";
-                ESP_LOGI("Music", "Fetching Deezer API: %s", api_url.c_str());
+                // iTunes API Endpoint
+                std::string api_url = "https://itunes.apple.com/search?term=" + clean_query + "&media=music&entity=song&limit=1";
+                ESP_LOGI("Music", "Fetching iTunes API: %s", api_url.c_str());
 
                 esp_http_client_config_t config = {};
                 config.url = api_url.c_str();
@@ -239,6 +240,7 @@ void Application::Initialize() {
                 config.crt_bundle_attach = esp_crt_bundle_attach;
                 config.buffer_size = 4096;
                 config.buffer_size_tx = 1024;
+                config.max_redirection_count = 5; // Follow redirects
 
                 esp_http_client_handle_t client = esp_http_client_init(&config);
                 esp_http_client_set_header(client, "User-Agent", "Mozilla/5.0");
@@ -253,33 +255,35 @@ void Application::Initialize() {
                     ESP_LOGI("Music", "HTTP Status = %d", status_code);
 
                     if (status_code == 200) {
-                        const int buf_size = 8192;
-                        char* response_buffer = (char*)calloc(1, buf_size);
-                        if (response_buffer) {
-                            int read_len = esp_http_client_read_response(client, response_buffer, buf_size - 1);
-                            if (read_len > 0) {
-                                response_buffer[read_len] = '\0';
-                                cJSON* root = cJSON_Parse(response_buffer);
-                                if (root) {
-                                    cJSON* data = cJSON_GetObjectItem(root, "data");
-                                    if (data && cJSON_IsArray(data) && cJSON_GetArraySize(data) > 0) {
-                                        cJSON* first_song = cJSON_GetArrayItem(data, 0);
-                                        cJSON* title = cJSON_GetObjectItem(first_song, "title");
-                                        if (title && cJSON_IsString(title)) {
-                                            track_name = title->valuestring;
-                                        }
+                        std::string full_response = "";
+                        char chunk[1024];
+                        int read_bytes = 0;
+                        while ((read_bytes = esp_http_client_read(client, chunk, sizeof(chunk) - 1)) > 0) {
+                            chunk[read_bytes] = '\0';
+                            full_response += chunk;
+                            if (full_response.length() > 16384) break; // Limit response size
+                        }
 
-                                        cJSON* preview = cJSON_GetObjectItem(first_song, "preview");
-                                        if (preview && cJSON_IsString(preview)) {
-                                            audio_url = preview->valuestring;
-                                        }
+                        if (!full_response.empty()) {
+                            cJSON* root = cJSON_Parse(full_response.c_str());
+                            if (root) {
+                                cJSON* results = cJSON_GetObjectItem(root, "results");
+                                if (results && cJSON_IsArray(results) && cJSON_GetArraySize(results) > 0) {
+                                    cJSON* first_song = cJSON_GetArrayItem(results, 0);
+                                    cJSON* track = cJSON_GetObjectItem(first_song, "trackName");
+                                    if (track && cJSON_IsString(track)) {
+                                        track_name = track->valuestring;
                                     }
-                                    cJSON_Delete(root);
-                                } else {
-                                    ESP_LOGE("Music", "JSON Parse Failed");
+
+                                    cJSON* preview = cJSON_GetObjectItem(first_song, "previewUrl");
+                                    if (preview && cJSON_IsString(preview)) {
+                                        audio_url = preview->valuestring;
+                                    }
                                 }
+                                cJSON_Delete(root);
+                            } else {
+                                ESP_LOGE("Music", "JSON Parse Failed");
                             }
-                            free(response_buffer);
                         }
                     }
                 } else {
@@ -298,7 +302,7 @@ void Application::Initialize() {
 
                     vTaskDelay(pdMS_TO_TICKS(200));
 
-                    ESP_LOGI("Music", "Playing MP3: %s (%s)", track_name.c_str(), audio_url.c_str());
+                    ESP_LOGI("Music", "Playing: %s (%s)", track_name.c_str(), audio_url.c_str());
                     app.StartNotification(audio_url, {});
                 } else {
                     ESP_LOGW("Music", "Song not found");
@@ -309,7 +313,7 @@ void Application::Initialize() {
 
             return "Playing " + query;
         });
-
+ 
     // Set network event callback for UI updates and network state handling
     board.SetNetworkEventCallback([this](NetworkEvent event, const std::string& data) {
         auto display = Board::GetInstance().GetDisplay();
