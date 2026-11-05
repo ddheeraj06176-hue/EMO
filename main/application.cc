@@ -192,7 +192,7 @@ void Application::Initialize() {
             return "TV switched";
         });
 
-// 5. Play Song Tool (Piped API - Direct Google Ogg/Opus CDN, No 403 Block)
+// 5. Play Song Tool (Jamendo Global API - Native Direct Ogg/Vorbis Stream)
     mcp_server.AddTool("play_song", "Play a music song by name",
         PropertyList({
             Property("query", kPropertyTypeString)
@@ -200,7 +200,7 @@ void Application::Initialize() {
         [this](const PropertyList& properties) -> ToolResult {
             std::string query = properties["query"].value<std::string>();
             if (query.empty()) {
-                query = "Alan Walker Faded";
+                query = "Alan Walker";
             }
 
             xTaskCreate([](void* arg) {
@@ -208,132 +208,83 @@ void Application::Initialize() {
                 std::string raw_query = *q_ptr;
                 delete q_ptr;
 
-                // Force Google & Cloudflare DNS
+                // Force Public DNS
                 ip_addr_t primary_dns, secondary_dns;
                 ipaddr_aton("8.8.8.8", &primary_dns);
                 dns_setserver(0, &primary_dns);
                 ipaddr_aton("1.1.1.1", &secondary_dns);
                 dns_setserver(1, &secondary_dns);
 
-                // URL percent-encoding
+                // Clean Query for API
                 std::string clean_query = "";
-                char hex_buf[4];
                 for (unsigned char c : raw_query) {
-                    if (isalnum(c) || c == '-' || c == '_' || c == '.' || c == '~') {
+                    if (isalnum(c) || c == '-' || c == '_' || c == '.') {
                         clean_query += c;
                     } else if (c == ' ') {
-                        clean_query += "%20";
-                    } else if (c != '\r' && c != '\n') {
-                        snprintf(hex_buf, sizeof(hex_buf), "%%%02X", c);
-                        clean_query += hex_buf;
+                        clean_query += "+";
                     }
                 }
-                if (clean_query.empty()) clean_query = "Alan%20Walker%20Faded";
+                if (clean_query.empty()) clean_query = "Alan+Walker";
 
-                // Step 1: Search video via Piped Public API
-                std::string search_url = "https://pipedapi.kavin.rocks/search?q=" + clean_query + "&filter=music_songs";
-                ESP_LOGI("Music", "Searching: %s", search_url.c_str());
+                // Jamendo Official Open API (audioformat=ogg2 is Native Ogg Vorbis/Opus)
+                std::string api_url = "https://api.jamendo.com/v3.0/tracks/?client_id=56d30c95&format=json&limit=1&namesearch=" + clean_query + "&audioformat=ogg2";
+                ESP_LOGI("Music", "Fetching Jamendo Ogg Stream: %s", api_url.c_str());
 
                 esp_http_client_config_t config = {};
-                config.url = search_url.c_str();
-                config.timeout_ms = 8000;
+                config.url = api_url.c_str();
+                config.timeout_ms = 10000;
                 config.crt_bundle_attach = esp_crt_bundle_attach;
                 config.buffer_size = 4096;
                 config.buffer_size_tx = 1024;
                 config.max_redirection_count = 5;
 
                 esp_http_client_handle_t client = esp_http_client_init(&config);
-                esp_http_client_set_header(client, "User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64)");
+                esp_http_client_set_header(client, "User-Agent", "Mozilla/5.0");
 
                 esp_err_t err = esp_http_client_open(client, 0);
-                std::string video_id = "";
+                std::string audio_url = "";
                 std::string track_name = raw_query;
 
                 if (err == ESP_OK) {
                     esp_http_client_fetch_headers(client);
                     int status_code = esp_http_client_get_status_code(client);
-                    ESP_LOGI("Music", "Search Status = %d", status_code);
+                    ESP_LOGI("Music", "API Status = %d", status_code);
 
                     if (status_code == 200) {
-                        std::string res = "";
+                        std::string full_res = "";
                         char chunk[1024];
                         int r = 0;
                         while ((r = esp_http_client_read(client, chunk, sizeof(chunk) - 1)) > 0) {
                             chunk[r] = '\0';
-                            res += chunk;
-                            if (res.length() > 8192) break;
+                            full_res += chunk;
+                            if (full_res.length() > 8192) break;
                         }
 
-                        cJSON* root = cJSON_Parse(res.c_str());
-                        if (root) {
-                            cJSON* items = cJSON_GetObjectItem(root, "items");
-                            if (items && cJSON_IsArray(items) && cJSON_GetArraySize(items) > 0) {
-                                cJSON* first = cJSON_GetArrayItem(items, 0);
-                                cJSON* title = cJSON_GetObjectItem(first, "title");
-                                if (title && cJSON_IsString(title)) track_name = title->valuestring;
-                                
-                                cJSON* url_item = cJSON_GetObjectItem(first, "url");
-                                if (url_item && cJSON_IsString(url_item)) {
-                                    std::string u = url_item->valuestring;
-                                    auto pos = u.find("v=");
-                                    if (pos != std::string::npos) {
-                                        video_id = u.substr(pos + 2);
+                        if (!full_res.empty()) {
+                            cJSON* root = cJSON_Parse(full_res.c_str());
+                            if (root) {
+                                cJSON* results = cJSON_GetObjectItem(root, "results");
+                                if (results && cJSON_IsArray(results) && cJSON_GetArraySize(results) > 0) {
+                                    cJSON* first_track = cJSON_GetArrayItem(results, 0);
+                                    cJSON* name = cJSON_GetObjectItem(first_track, "name");
+                                    if (name && cJSON_IsString(name)) {
+                                        track_name = name->valuestring;
+                                    }
+                                    cJSON* audio = cJSON_GetObjectItem(first_track, "audio");
+                                    if (audio && cJSON_IsString(audio)) {
+                                        audio_url = audio->valuestring;
                                     }
                                 }
+                                cJSON_Delete(root);
                             }
-                            cJSON_Delete(root);
                         }
                     }
+                } else {
+                    ESP_LOGE("Music", "HTTP open failed: %s", esp_err_to_name(err));
                 }
                 esp_http_client_cleanup(client);
 
-                // Step 2: Fetch Direct Stream URL for video_id
-                std::string audio_url = "";
-                if (!video_id.empty()) {
-                    std::string stream_api = "https://pipedapi.kavin.rocks/streams/" + video_id;
-                    config.url = stream_api.c_str();
-                    client = esp_http_client_init(&config);
-                    esp_http_client_set_header(client, "User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64)");
-
-                    if (esp_http_client_open(client, 0) == ESP_OK) {
-                        esp_http_client_fetch_headers(client);
-                        if (esp_http_client_get_status_code(client) == 200) {
-                            std::string s_res = "";
-                            char s_chunk[1024];
-                            int s_r = 0;
-                            while ((s_r = esp_http_client_read(client, s_chunk, sizeof(s_chunk) - 1)) > 0) {
-                                s_chunk[s_r] = '\0';
-                                s_res += s_chunk;
-                                if (s_res.length() > 32768) break;
-                            }
-
-                            cJSON* s_root = cJSON_Parse(s_res.c_str());
-                            if (s_root) {
-                                cJSON* audio_streams = cJSON_GetObjectItem(s_root, "audioStreams");
-                                if (audio_streams && cJSON_IsArray(audio_streams)) {
-                                    int count = cJSON_GetArraySize(audio_streams);
-                                    for (int i = 0; i < count; i++) {
-                                        cJSON* item = cJSON_GetArrayItem(audio_streams, i);
-                                        cJSON* mime = cJSON_GetObjectItem(item, "mimeType");
-                                        cJSON* stream_url = cJSON_GetObjectItem(item, "url");
-                                        // Priority to Ogg/Opus
-                                        if (mime && cJSON_IsString(mime) && stream_url && cJSON_IsString(stream_url)) {
-                                            std::string m = mime->valuestring;
-                                            if (m.find("opus") != std::string::npos || m.find("ogg") != std::string::npos) {
-                                                audio_url = stream_url->valuestring;
-                                                break;
-                                            }
-                                        }
-                                    }
-                                }
-                                cJSON_Delete(s_root);
-                            }
-                        }
-                    }
-                    esp_http_client_cleanup(client);
-                }
-
-                // Step 3: Trigger safe playback
+                // Play native OGG audio safely
                 if (!audio_url.empty()) {
                     auto& app = Application::GetInstance();
                     vTaskDelay(pdMS_TO_TICKS(1500));
@@ -344,14 +295,14 @@ void Application::Initialize() {
 
                     vTaskDelay(pdMS_TO_TICKS(200));
 
-                    ESP_LOGI("Music", "Playing Native Opus: %s (%s)", track_name.c_str(), audio_url.c_str());
+                    ESP_LOGI("Music", "Playing Ogg: %s (%s)", track_name.c_str(), audio_url.c_str());
                     app.StartNotification(audio_url, {});
                 } else {
-                    ESP_LOGW("Music", "Audio stream URL extraction failed");
+                    ESP_LOGW("Music", "Song not found on Jamendo");
                 }
 
                 vTaskDelete(NULL);
-            }, "music_task", 12288, new std::string(query), 4, NULL);
+            }, "music_task", 10240, new std::string(query), 4, NULL);
 
             return "Playing " + query;
         });
