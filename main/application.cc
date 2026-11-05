@@ -1,4 +1,4 @@
-#include "application.h"
+c#include "application.h"
 #include "assets.h"
 #include "assets/lang_config.h"
 #include "audio_codec.h"
@@ -199,11 +199,7 @@ void Application::Initialize() {
             Property("query", kPropertyTypeString)
         }),
         [this](const PropertyList& properties) -> ToolResult {
-            std::string query = "Alan Walker Faded";
-            auto it = properties.find("query");
-            if (it != properties.end()) {
-                query = it->second.value<std::string>();
-            }
+            std::string query = properties["query"].value<std::string>();
             if (query.empty()) {
                 query = "Alan Walker Faded";
             }
