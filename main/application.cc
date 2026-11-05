@@ -192,7 +192,7 @@ void Application::Initialize() {
             return "TV switched";
         });
 
-   // 5. Play Song Tool (Robust iTunes API with Redirects)
+// 5. Play Song Tool (Direct Ogg/Opus Audio Engine)
     mcp_server.AddTool("play_song", "Play a music song by name",
         PropertyList({
             Property("query", kPropertyTypeString)
@@ -200,7 +200,7 @@ void Application::Initialize() {
         [this](const PropertyList& properties) -> ToolResult {
             std::string query = properties["query"].value<std::string>();
             if (query.empty()) {
-                query = "Faded Alan Walker";
+                query = "Alan Walker Faded";
             }
 
             xTaskCreate([](void* arg) {
@@ -208,7 +208,7 @@ void Application::Initialize() {
                 std::string raw_query = *q_ptr;
                 delete q_ptr;
 
-                // Force Google & Cloudflare DNS
+                // Force Public DNS
                 ip_addr_t primary_dns, secondary_dns;
                 ipaddr_aton("8.8.8.8", &primary_dns);
                 dns_setserver(0, &primary_dns);
@@ -228,68 +228,66 @@ void Application::Initialize() {
                         clean_query += hex_buf;
                     }
                 }
-                if (clean_query.empty()) clean_query = "Faded%20Alan%20Walker";
+                if (clean_query.empty()) clean_query = "Alan%20Walker%20Faded";
 
-                // iTunes API Endpoint
-                std::string api_url = "https://itunes.apple.com/search?term=" + clean_query + "&media=music&entity=song&limit=1";
-                ESP_LOGI("Music", "Fetching iTunes API: %s", api_url.c_str());
+                // Invidious Audio API (Native Ogg/Opus audio supported by NotifyPlayer)
+                std::string api_url = "https://inv.nadeko.net/api/v1/search?q=" + clean_query + "&type=video";
+                ESP_LOGI("Music", "Fetching Stream: %s", api_url.c_str());
 
                 esp_http_client_config_t config = {};
                 config.url = api_url.c_str();
-                config.timeout_ms = 10000;
+                config.timeout_ms = 8000;
                 config.crt_bundle_attach = esp_crt_bundle_attach;
                 config.buffer_size = 4096;
                 config.buffer_size_tx = 1024;
-                config.max_redirection_count = 5; // Follow redirects
+                config.max_redirection_count = 5;
 
                 esp_http_client_handle_t client = esp_http_client_init(&config);
                 esp_http_client_set_header(client, "User-Agent", "Mozilla/5.0");
                 
                 esp_err_t err = esp_http_client_open(client, 0);
-                std::string audio_url = "";
+                std::string video_id = "";
                 std::string track_name = raw_query;
 
                 if (err == ESP_OK) {
                     esp_http_client_fetch_headers(client);
                     int status_code = esp_http_client_get_status_code(client);
-                    ESP_LOGI("Music", "HTTP Status = %d", status_code);
+                    ESP_LOGI("Music", "Search Status = %d", status_code);
 
                     if (status_code == 200) {
-                        std::string full_response = "";
+                        std::string response_data = "";
                         char chunk[1024];
                         int read_bytes = 0;
                         while ((read_bytes = esp_http_client_read(client, chunk, sizeof(chunk) - 1)) > 0) {
                             chunk[read_bytes] = '\0';
-                            full_response += chunk;
-                            if (full_response.length() > 16384) break; // Limit response size
+                            response_data += chunk;
+                            if (response_data.length() > 8192) break; // First result is at the very beginning
                         }
 
-                        if (!full_response.empty()) {
-                            cJSON* root = cJSON_Parse(full_response.c_str());
-                            if (root) {
-                                cJSON* results = cJSON_GetObjectItem(root, "results");
-                                if (results && cJSON_IsArray(results) && cJSON_GetArraySize(results) > 0) {
-                                    cJSON* first_song = cJSON_GetArrayItem(results, 0);
-                                    cJSON* track = cJSON_GetObjectItem(first_song, "trackName");
-                                    if (track && cJSON_IsString(track)) {
-                                        track_name = track->valuestring;
-                                    }
-
-                                    cJSON* preview = cJSON_GetObjectItem(first_song, "previewUrl");
-                                    if (preview && cJSON_IsString(preview)) {
-                                        audio_url = preview->valuestring;
-                                    }
+                        if (!response_data.empty()) {
+                            cJSON* root = cJSON_Parse(response_data.c_str());
+                            if (root && cJSON_IsArray(root) && cJSON_GetArraySize(root) > 0) {
+                                cJSON* first_item = cJSON_GetArrayItem(root, 0);
+                                cJSON* title = cJSON_GetObjectItem(first_item, "title");
+                                if (title && cJSON_IsString(title)) {
+                                    track_name = title->valuestring;
                                 }
-                                cJSON_Delete(root);
-                            } else {
-                                ESP_LOGE("Music", "JSON Parse Failed");
+                                cJSON* vid = cJSON_GetObjectItem(first_item, "videoId");
+                                if (vid && cJSON_IsString(vid)) {
+                                    video_id = vid->valuestring;
+                                }
                             }
+                            if (root) cJSON_Delete(root);
                         }
                     }
-                } else {
-                    ESP_LOGE("Music", "HTTP open failed: %s", esp_err_to_name(err));
                 }
                 esp_http_client_cleanup(client);
+
+                std::string audio_url = "";
+                if (!video_id.empty()) {
+                    // Direct Ogg/Opus audio URL
+                    audio_url = "https://inv.nadeko.net/latest_version?id=" + video_id + "&itag=251";
+                }
 
                 // Play audio safely
                 if (!audio_url.empty()) {
@@ -302,10 +300,10 @@ void Application::Initialize() {
 
                     vTaskDelay(pdMS_TO_TICKS(200));
 
-                    ESP_LOGI("Music", "Playing: %s (%s)", track_name.c_str(), audio_url.c_str());
+                    ESP_LOGI("Music", "Playing Ogg/Opus: %s (%s)", track_name.c_str(), audio_url.c_str());
                     app.StartNotification(audio_url, {});
                 } else {
-                    ESP_LOGW("Music", "Song not found");
+                    ESP_LOGW("Music", "Song stream URL not found");
                 }
 
                 vTaskDelete(NULL);
