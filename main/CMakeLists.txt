@@ -43,25 +43,28 @@ set(SOURCES "audio/audio_codec.cc"
             "main.cc"
             )
 
-set(EXTRA_BT_DIRS "")
+set(EXTRA_BT_INCLUDES "")
 set(EXTRA_BT_REQS "")
 
-if(CONFIG_BT_NIMBLE_ENABLED)
-    set(EXTRA_BT_DIRS
-        "$ENV{IDF_PATH}/components/bt/host/nimble/nimble/porting/nimble/include"
-        "$ENV{IDF_PATH}/components/bt/host/nimble/nimble/nimble/include"
-        "$ENV{IDF_PATH}/components/bt/host/nimble/nimble/nimble/host/include"
-        "$ENV{IDF_PATH}/components/bt/host/nimble/nimble/nimble/host/services/gap/include"
-        "$ENV{IDF_PATH}/components/bt/host/nimble/nimble/nimble/host/services/gatt/include"
-        "$ENV{IDF_PATH}/components/bt/porting/npl/freertos/include"
-        "$ENV{IDF_PATH}/components/bt/host/nimble/nimble/porting/npl/freertos/include"
-    )
-    set(EXTRA_BT_REQS bt)
+# Sirf ESP32 aur ESP32-S3 par Bluetooth headers aur component load honge
+if(CONFIG_IDF_TARGET_ESP32 OR CONFIG_IDF_TARGET_ESP32S3)
+    if(CONFIG_BT_ENABLED)
+        set(EXTRA_BT_INCLUDES
+            "$ENV{IDF_PATH}/components/bt/host/nimble/nimble/porting/nimble/include"
+            "$ENV{IDF_PATH}/components/bt/host/nimble/nimble/nimble/include"
+            "$ENV{IDF_PATH}/components/bt/host/nimble/nimble/nimble/host/include"
+            "$ENV{IDF_PATH}/components/bt/host/nimble/nimble/nimble/host/services/gap/include"
+            "$ENV{IDF_PATH}/components/bt/host/nimble/nimble/nimble/host/services/gatt/include"
+            "$ENV{IDF_PATH}/components/bt/porting/npl/freertos/include"
+            "$ENV{IDF_PATH}/components/bt/host/nimble/nimble/porting/npl/freertos/include"
+        )
+        set(EXTRA_BT_REQS bt)
+    endif()
 endif()
 
 idf_component_register(
     SRCS ${SOURCES}
-    INCLUDE_DIRS "." "display" "display/lvgl_display" "display/lvgl_display/jpg" "audio" "audio/demuxer" "protocols" ${EXTRA_BT_DIRS}
+    INCLUDE_DIRS "." "display" "display/lvgl_display" "display/lvgl_display/jpg" "audio" "audio/demuxer" "protocols" ${EXTRA_BT_INCLUDES}
     REQUIRES ${REQUIRES}
     PRIV_REQUIRES ${PRIV_REQUIRES} ${EXTRA_BT_REQS}
 )
