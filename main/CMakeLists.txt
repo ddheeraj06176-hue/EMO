@@ -62,13 +62,8 @@ list(APPEND SOURCES
     "boards/common/sy6970.cc"
     "boards/common/system_reset.cc"
 )
-if(CONFIG_XIAOZHI_NETWORK_ETHERNET)
-    list(APPEND SOURCES "boards/common/ethernet_board.cc")
-endif()
 
-set(INCLUDE_DIRS "." "display" "display/lvgl_display" "display/lvgl_display/jpg" "audio" "audio/demuxer" "protocols" ${CMAKE_CURRENT_SOURCE_DIR}/boards/common)
-
-# Force Bluetooth NimBLE paths & dependencies for ESP32 and ESP32-S3
+# Target-specific Bluetooth NimBLE handling (Force added for ESP32/S3)
 set(EXTRA_BT_REQS "")
 if(CONFIG_IDF_TARGET_ESP32 OR CONFIG_IDF_TARGET_ESP32S3)
     list(APPEND INCLUDE_DIRS
