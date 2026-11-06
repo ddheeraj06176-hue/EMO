@@ -49,6 +49,59 @@ static uint16_t hid_conn_handle = BLE_HS_CONN_HANDLE_NONE;
 static uint16_t hid_report_handle = 0;
 static bool ble_is_connected = false;
 
+// Standard HID Report Map for Android Media Keys
+static const uint8_t hid_report_map[] = {
+    0x05, 0x0C,        // Usage Page (Consumer)
+    0x09, 0x01,        // Usage (Consumer Control)
+    0xA1, 0x01,        // Collection (Application)
+    0x85, 0x01,        //   Report ID (1)
+    0x15, 0x00,        //   Logical Minimum (0)
+    0x25, 0x01,        //   Logical Maximum (1)
+    0x75, 0x01,        //   Report Size (1)
+    0x95, 0x05,        //   Report Count (5)
+    0x09, 0xCD,        //   Usage (Play/Pause)
+    0x09, 0xB5,        //   Usage (Scan Next Track)
+    0x09, 0xB6,        //   Usage (Scan Previous Track)
+    0x09, 0xE9,        //   Usage (Volume Increment)
+    0x09, 0xEA,        //   Usage (Volume Decrement)
+    0x81, 0x02,        //   Input (Data,Var,Abs)
+    0x75, 0x01,        //   Report Size (1)
+    0x95, 0x03,        //   Report Count (3) - Padding bits
+    0x81, 0x03,        //   Input (Cnst,Var,Abs)
+    0xC0               // End Collection
+};
+
+static int gatt_svr_chr_access_hid(uint16_t conn_handle, uint16_t attr_handle,
+                                   struct ble_gatt_access_ctxt *ctxt, void *arg) {
+    if (ctxt->op == BLE_GATT_ACCESS_OP_READ_CHR) {
+        os_mbuf_append(ctxt->om, hid_report_map, sizeof(hid_report_map));
+        return 0;
+    }
+    return 0;
+}
+
+static const struct ble_gatt_svc_def gatt_svr_svcs[] = {
+    {
+        .type = BLE_GATT_SVC_TYPE_PRIMARY,
+        .uuid = BLE_UUID16_DECLARE(0x1812), // HID Service
+        .characteristics = (struct ble_gatt_chr_def[]) {
+            {
+                .uuid = BLE_UUID16_DECLARE(0x2A4B), // Report Map
+                .access_cb = gatt_svr_chr_access_hid,
+                .flags = BLE_GATT_CHR_F_READ,
+            },
+            {
+                .uuid = BLE_UUID16_DECLARE(0x2A4D), // Report
+                .access_cb = gatt_svr_chr_access_hid,
+                .flags = BLE_GATT_CHR_F_READ | BLE_GATT_CHR_F_NOTIFY,
+                .val_handle = &hid_report_handle,
+            },
+            { 0 }
+        },
+    },
+    { 0 }
+};
+
 static int ble_gap_event(struct ble_gap_event *event, void *arg);
 
 static void ble_app_advertise(void) {
@@ -64,7 +117,7 @@ static void ble_app_advertise(void) {
     fields.name = (uint8_t *)device_name;
     fields.name_len = strlen(device_name);
     fields.name_is_complete = 1;
-    fields.appearance = 0x03C2; // HID Remote Control Appearance
+    fields.appearance = 0x03C2;
     fields.appearance_is_present = 1;
 
     ble_gap_adv_set_fields(&fields);
@@ -84,8 +137,6 @@ static int ble_gap_event(struct ble_gap_event *event, void *arg) {
                 hid_conn_handle = event->connect.conn_handle;
                 ble_is_connected = true;
                 ESP_LOGI(TAG_BLE, ">>> Phone Connected Successfully! Handle: %d <<<", hid_conn_handle);
-                // Pair/Bonding security initiate karo taaki Android connection drop na kare
-                ble_gap_security_initiate(event->connect.conn_handle);
             } else {
                 ble_app_advertise();
             }
@@ -98,20 +149,9 @@ static int ble_gap_event(struct ble_gap_event *event, void *arg) {
             ble_app_advertise();
             break;
 
-        case BLE_GAP_EVENT_CONN_UPDATE:
-            ESP_LOGI(TAG_BLE, "Connection parameters updated");
-            break;
-
         case BLE_GAP_EVENT_ENC_CHANGE:
             ESP_LOGI(TAG_BLE, "Encryption change event; status=%d", event->enc_change.status);
             break;
-
-        case BLE_GAP_EVENT_REPEAT_PAIRING:
-            // Purana bonding data clean karke nayi pairing allow karo
-            struct ble_gap_conn_desc desc;
-            ble_gap_conn_find(event->repeat_pairing.conn_handle, &desc);
-            ble_store_util_delete_peer(&desc.peer_id_addr);
-            return BLE_GAP_REPEAT_PAIRING_RETRY;
 
         default:
             break;
@@ -127,11 +167,11 @@ static void SendBleMediaCommand(BleMediaKey key) {
 
     uint8_t report = 0;
     switch (key) {
-        case BLE_MEDIA_PLAY_PAUSE: report = 0x01; ESP_LOGI(TAG_BLE, "Play/Pause sent"); break;
-        case BLE_MEDIA_NEXT:       report = 0x02; ESP_LOGI(TAG_BLE, "Next Track sent"); break;
-        case BLE_MEDIA_PREV:       report = 0x04; ESP_LOGI(TAG_BLE, "Prev Track sent"); break;
-        case BLE_MEDIA_VOL_UP:     report = 0x08; ESP_LOGI(TAG_BLE, "Vol Up sent"); break;
-        case BLE_MEDIA_VOL_DOWN:   report = 0x10; ESP_LOGI(TAG_BLE, "Vol Down sent"); break;
+        case BLE_MEDIA_PLAY_PAUSE: report = 0x01; break;
+        case BLE_MEDIA_NEXT:       report = 0x02; break;
+        case BLE_MEDIA_PREV:       report = 0x04; break;
+        case BLE_MEDIA_VOL_UP:     report = 0x08; break;
+        case BLE_MEDIA_VOL_DOWN:   report = 0x10; break;
     }
 
     struct os_mbuf *om = ble_hs_mbuf_from_flat(&report, sizeof(report));
@@ -154,29 +194,25 @@ static void ble_host_task(void *param) {
 static void InitEmoBluetooth() {
     nimble_port_init();
 
-    // Security Settings (Android Just-Works Pairing)
     ble_hs_cfg.sm_io_cap = BLE_SM_IO_CAP_NO_IO;
     ble_hs_cfg.sm_bonding = 1;
     ble_hs_cfg.sm_mitm = 0;
     ble_hs_cfg.sm_sc = 1;
-    ble_hs_cfg.sm_our_key_dist = BLE_SM_PAIR_KEY_DIST_ENC | BLE_SM_PAIR_KEY_DIST_ID;
-    ble_hs_cfg.sm_their_key_dist = BLE_SM_PAIR_KEY_DIST_ENC | BLE_SM_PAIR_KEY_DIST_ID;
 
     ble_svc_gap_device_name_set("EMO Media Remote");
     ble_svc_gap_init();
     ble_svc_gatt_init();
 
+    ble_gatts_count_cfg(gatt_svr_svcs);
+    ble_gatts_add_svcs(gatt_svr_svcs);
+
     ble_hs_cfg.sync_cb = ble_app_advertise;
     nimble_port_freertos_init(ble_host_task);
-    ESP_LOGI(TAG_BLE, "NimBLE Stack initialized successfully with SMP Bonding");
+    ESP_LOGI(TAG_BLE, "NimBLE Stack initialized successfully with HID Service");
 }
 #else
-static void SendBleMediaCommand(BleMediaKey key) {
-    ESP_LOGI(TAG_BLE, "Bluetooth disabled on this target.");
-}
-static void InitEmoBluetooth() {
-    ESP_LOGI(TAG_BLE, "Bluetooth disabled on this target.");
-}
+static void SendBleMediaCommand(int key) {}
+static void InitEmoBluetooth() {}
 #endif
 
 // --- Local Web Dashboard Handlers ---
@@ -279,14 +315,12 @@ void Application::Initialize() {
     auto& board = Board::GetInstance();
     SetDeviceState(kDeviceStateStarting);
 
-    // Setup the display
     auto display = board.GetDisplay();
     display->SetupUI();
     RunEmoBootAnimation(display);
     EmoMoodEngine::GetInstance().Start(display);
     StartEmoTouchService(display);
   
-    // Setup the audio service
     auto codec = board.GetAudioCodec();
     audio_service_.Initialize(codec);
     audio_service_.Start();
@@ -294,8 +328,9 @@ void Application::Initialize() {
     ESP_LOGI(TAG, "After board/audio init");
     SystemInfo::PrintHeapStats();
 
-    // Start Bluetooth stack
+#if CONFIG_BT_NIMBLE_ENABLED
     InitEmoBluetooth();
+#endif
 
     AudioServiceCallbacks callbacks;
     callbacks.on_send_queue_available = [this]() {
@@ -325,7 +360,6 @@ void Application::Initialize() {
     mcp_server.AddCommonTools();
     mcp_server.AddUserOnlyTools();
 
-    // Math & Physics Equation Tool
     mcp_server.AddTool("show_math_solution",
         "Display step-by-step math or physics equation solutions on the screen",
         PropertyList({
@@ -363,7 +397,6 @@ void Application::Initialize() {
             return "Solution displayed on screen";
         }); 
 
-    // Relays
     mcp_server.AddTool("control_light1", "Turn Light 1 on or off", PropertyList(),
         [](const PropertyList& properties) { SendRelayControl(DEVICE_LIGHT1, 1); return "Light 1 switched"; });
 
@@ -376,7 +409,7 @@ void Application::Initialize() {
     mcp_server.AddTool("control_tv", "Turn TV on or off", PropertyList(),
         [](const PropertyList& properties) { SendRelayControl(DEVICE_TV, 1); return "TV switched"; });
 
-    // BLE Media Control Tool
+#if CONFIG_BT_NIMBLE_ENABLED
     mcp_server.AddTool("control_phone_media", "Control phone music playback (play, pause, next, prev, volup, voldown)",
         PropertyList({
             Property("command", kPropertyTypeString)
@@ -397,22 +430,17 @@ void Application::Initialize() {
             return "Phone media command processed";
         });
 
-    // Bluetooth Status Query Tool
     mcp_server.AddTool("get_bluetooth_status", "Check if phone is connected via Bluetooth remote",
         PropertyList(),
         [](const PropertyList& properties) -> ToolResult {
-#if CONFIG_BT_NIMBLE_ENABLED
             if (ble_is_connected) {
                 return "Phone is connected via Bluetooth Media Remote";
             } else {
                 return "Bluetooth is broadcasting as 'EMO Media Remote', but phone is not paired yet. Please pair from phone settings.";
             }
-#else
-            return "Bluetooth is not supported on this firmware build";
-#endif
         });
+#endif
   
-    // Phone Flashlight Control Tool
     mcp_server.AddTool("control_phone_torch", "Turn phone flashlight/torch on or off",
         PropertyList({
             Property("action", kPropertyTypeString)
@@ -425,7 +453,6 @@ void Application::Initialize() {
             return "Phone torch " + action + " sent";
         });
 
-    // Phone Companion Action Query
     mcp_server.AddTool("query_phone_action", "Forward general internet or device queries to companion phone",
         PropertyList({
             Property("query", kPropertyTypeString)
@@ -1489,7 +1516,7 @@ bool Application::UpgradeFirmware(const std::string& url, const std::string& ver
     auto display = board.GetDisplay();
 
     std::string upgrade_url = url;
-    std::string version_info = version.empty() ? "(Manual upgrade)" : version;
+    std::version_info = version.empty() ? "(Manual upgrade)" : version;
 
     if (GetDeviceState() == kDeviceStateNotifying) {
         StopNotification();
