@@ -55,7 +55,17 @@ if(CONFIG_BT_NIMBLE_ENABLED)
         "$ENV{IDF_PATH}/components/bt/porting/npl/freertos/include"
         "$ENV{IDF_PATH}/components/bt/host/nimble/nimble/porting/npl/freertos/include"
     )
-    list(APPEND PRIV_REQUIRES bt)
+endif()
+
+idf_component_register(
+    SRCS ${SOURCES}
+    INCLUDE_DIRS ${INCLUDE_DIRS}
+    REQUIRES ${REQUIRES}
+    PRIV_REQUIRES ${PRIV_REQUIRES}
+)
+
+if(CONFIG_BT_NIMBLE_ENABLED)
+    idf_component_optional_requires(PRIV_REQUIRES bt)
 endif()
 
 # Add board common files
