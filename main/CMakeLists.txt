@@ -43,8 +43,15 @@ set(SOURCES "audio/audio_codec.cc"
             "main.cc"
             )
 
-set(INCLUDE_DIRS "." "display" "display/lvgl_display" "display/lvgl_display/jpg" "audio" "audio/demuxer" "protocols")
-list(APPEND PRIV_REQUIRES bt nimble)
+
+set(INCLUDE_DIRS "." "display" "display/lvgl_display" "display/lvgl_display/jpg" "audio" "audio/demuxer" "protocols"
+    "$ENV{IDF_PATH}/components/bt/host/nimble/nimble/porting/nimble/include"
+    "$ENV{IDF_PATH}/components/bt/host/nimble/nimble/nimble/include"
+    "$ENV{IDF_PATH}/components/bt/host/nimble/nimble/nimble/host/include"
+    "$ENV{IDF_PATH}/components/bt/host/nimble/nimble/nimble/host/services/gap/include"
+    "$ENV{IDF_PATH}/components/bt/host/nimble/nimble/nimble/host/services/gatt/include"
+)
+list(APPEND PRIV_REQUIRES bt)
 
 # Add board common files
 list(APPEND SOURCES
