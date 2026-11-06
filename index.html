@@ -1,0 +1,339 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>EMO Cyber Command</title>
+  <style>
+    :root {
+      --bg: #030712;
+      --card-bg: rgba(10, 15, 30, 0.7);
+      --cyan: #00f2fe;
+      --cyan-glow: rgba(0, 242, 254, 0.45);
+      --magenta: #f43f5e;
+      --magenta-glow: rgba(244, 63, 94, 0.45);
+      --text: #f8fafc;
+      --muted: #64748b;
+    }
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      font-family: 'Courier New', Courier, monospace;
+      -webkit-tap-highlight-color: transparent;
+      user-select: none;
+    }
+    body {
+      background: radial-gradient(circle at 50% 20%, #0a1128 0%, var(--bg) 80%);
+      color: var(--text);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 28px 16px;
+      overflow-x: hidden;
+      position: relative;
+    }
+
+    /* Ambient Cyber Scanlines */
+    body::before {
+      content: " ";
+      position: fixed;
+      top: 0; left: 0; bottom: 0; right: 0;
+      background: linear-gradient(rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, 0.25) 50%), linear-gradient(90deg, rgba(255, 0, 0, 0.03), rgba(0, 255, 0, 0.01), rgba(0, 0, 255, 0.03));
+      z-index: 10;
+      background-size: 100% 4px, 6px 100%;
+      pointer-events: none;
+    }
+
+    .hud-container {
+      width: 100%;
+      max-width: 400px;
+      z-index: 20;
+    }
+
+    /* Top HUD Header */
+    .hud-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      border-bottom: 1px dashed rgba(0, 242, 254, 0.3);
+      padding-bottom: 14px;
+      margin-bottom: 24px;
+    }
+    .title-box h1 {
+      font-size: 22px;
+      letter-spacing: 3px;
+      color: var(--cyan);
+      text-shadow: 0 0 12px var(--cyan-glow);
+    }
+    .title-box p {
+      font-size: 10px;
+      letter-spacing: 2px;
+      color: var(--muted);
+      margin-top: 3px;
+    }
+    .status-badge {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 11px;
+      color: #10b981;
+      border: 1px solid rgba(16, 185, 129, 0.4);
+      background: rgba(16, 185, 129, 0.1);
+      padding: 6px 12px;
+      border-radius: 4px;
+      letter-spacing: 1px;
+    }
+    .pulsing-dot {
+      width: 8px;
+      height: 8px;
+      background: #10b981;
+      border-radius: 50%;
+      box-shadow: 0 0 10px #10b981;
+      animation: pulse 1.5s infinite;
+    }
+    @keyframes pulse {
+      0%, 100% { opacity: 1; transform: scale(1); }
+      50% { opacity: 0.4; transform: scale(0.8); }
+    }
+
+    /* Grid & Cards */
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 16px;
+      margin-bottom: 24px;
+    }
+    .hud-card {
+      position: relative;
+      background: var(--card-bg);
+      border: 1px solid rgba(0, 242, 254, 0.15);
+      border-radius: 12px;
+      padding: 18px;
+      height: 140px;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      cursor: pointer;
+      backdrop-filter: blur(12px);
+      transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+      overflow: hidden;
+    }
+    /* Corner Tech Accents */
+    .hud-card::after {
+      content: '';
+      position: absolute;
+      top: 0; right: 0;
+      width: 0; height: 0;
+      border-style: solid;
+      border-width: 0 16px 16px 0;
+      border-color: transparent rgba(0, 242, 254, 0.3) transparent transparent;
+      transition: all 0.3s;
+    }
+    .hud-card:active {
+      transform: scale(0.96);
+    }
+    .hud-card.active {
+      border-color: var(--cyan);
+      box-shadow: inset 0 0 20px rgba(0, 242, 254, 0.2), 0 0 20px var(--cyan-glow);
+    }
+    .hud-card.active::after {
+      border-color: transparent var(--cyan) transparent transparent;
+    }
+
+    .card-top {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .icon {
+      font-size: 26px;
+      filter: drop-shadow(0 0 8px rgba(255, 255, 255, 0.2));
+      transition: transform 0.3s;
+    }
+    .hud-card.active .icon {
+      transform: scale(1.15);
+      filter: drop-shadow(0 0 10px var(--cyan));
+    }
+    .switch-capsule {
+      width: 38px;
+      height: 18px;
+      background: rgba(255, 255, 255, 0.08);
+      border: 1px solid rgba(255, 255, 255, 0.15);
+      border-radius: 20px;
+      position: relative;
+      transition: all 0.3s;
+    }
+    .switch-capsule::after {
+      content: '';
+      position: absolute;
+      top: 2px;
+      left: 2px;
+      width: 12px;
+      height: 12px;
+      background: var(--muted);
+      border-radius: 50%;
+      transition: all 0.3s cubic-bezier(0.68, -0.55, 0.27, 1.55);
+    }
+    .hud-card.active .switch-capsule {
+      background: rgba(0, 242, 254, 0.15);
+      border-color: var(--cyan);
+    }
+    .hud-card.active .switch-capsule::after {
+      transform: translateX(20px);
+      background: var(--cyan);
+      box-shadow: 0 0 10px var(--cyan);
+    }
+
+    .card-bottom .name {
+      font-size: 14px;
+      font-weight: bold;
+      letter-spacing: 1px;
+      color: #cbd5e1;
+    }
+    .card-bottom .state {
+      font-size: 11px;
+      color: var(--muted);
+      letter-spacing: 2px;
+      margin-top: 4px;
+      transition: color 0.3s;
+    }
+    .hud-card.active .card-bottom .state {
+      color: var(--cyan);
+      text-shadow: 0 0 8px var(--cyan-glow);
+    }
+
+    /* Cyber Live Console Panel */
+    .terminal-box {
+      background: rgba(0, 0, 0, 0.6);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      border-radius: 8px;
+      padding: 12px 14px;
+      font-size: 11px;
+      line-height: 1.6;
+      color: #94a3b8;
+    }
+    .terminal-box .log-prompt {
+      color: var(--cyan);
+    }
+  </style>
+</head>
+<body>
+
+  <div class="hud-container">
+    <div class="hud-header">
+      <div class="title-box">
+        <h1>EMO // CORE</h1>
+        <p>CYBER INTERFACE v2.5</p>
+      </div>
+      <div class="status-badge">
+        <div class="pulsing-dot"></div>
+        <span>LINKED</span>
+      </div>
+    </div>
+
+    <div class="grid">
+      <!-- Light 1 -->
+      <div class="hud-card" onclick="triggerCyberRelay(this, 1, 'LIGHT_01')">
+        <div class="card-top">
+          <span class="icon">💡</span>
+          <div class="switch-capsule"></div>
+        </div>
+        <div class="card-bottom">
+          <div class="name">LIGHT 1</div>
+          <div class="state">[ OFF ]</div>
+        </div>
+      </div>
+
+      <!-- Light 2 -->
+      <div class="hud-card" onclick="triggerCyberRelay(this, 2, 'LIGHT_02')">
+        <div class="card-top">
+          <span class="icon">💡</span>
+          <div class="switch-capsule"></div>
+        </div>
+        <div class="card-bottom">
+          <div class="name">LIGHT 2</div>
+          <div class="state">[ OFF ]</div>
+        </div>
+      </div>
+
+      <!-- Fan -->
+      <div class="hud-card" onclick="triggerCyberRelay(this, 3, 'TURBO_FAN')">
+        <div class="card-top">
+          <span class="icon">🌀</span>
+          <div class="switch-capsule"></div>
+        </div>
+        <div class="card-bottom">
+          <div class="name">COOLING FAN</div>
+          <div class="state">[ OFF ]</div>
+        </div>
+      </div>
+
+      <!-- TV -->
+      <div class="hud-card" onclick="triggerCyberRelay(this, 4, 'DESK_SCREEN')">
+        <div class="card-top">
+          <span class="icon">📺</span>
+          <div class="switch-capsule"></div>
+        </div>
+        <div class="card-bottom">
+          <div class="name">MAIN DISPLAY</div>
+          <div class="state">[ OFF ]</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Live HUD Output -->
+    <div class="terminal-box">
+      <div><span class="log-prompt">> NODE:</span> 192.168.31.111:80</div>
+      <div><span class="log-prompt">> STATUS:</span> <span id="log-text">Standby. Tap any module to toggle.</span></div>
+    </div>
+  </div>
+
+  <script>
+    // Futuristic Web Audio Synthesizer (Bina kisi sound file ke custom sci-fi sound banta hai)
+    const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    function playSciFiBeep(active) {
+      if (audioCtx.state === 'suspended') audioCtx.resume();
+      const osc = audioCtx.createOscillator();
+      const gain = audioCtx.createGain();
+      osc.connect(gain);
+      gain.connect(audioCtx.destination);
+
+      const now = audioCtx.currentTime;
+      if (active) {
+        osc.frequency.setValueAtTime(440, now);
+        osc.frequency.exponentialRampToValueAtTime(880, now + 0.1);
+      } else {
+        osc.frequency.setValueAtTime(600, now);
+        osc.frequency.exponentialRampToValueAtTime(200, now + 0.1);
+      }
+      gain.gain.setValueAtTime(0.15, now);
+      gain.gain.exponentialRampToValueAtTime(0.01, now + 0.1);
+
+      osc.start(now);
+      osc.stop(now + 0.1);
+    }
+
+    function triggerCyberRelay(el, id, tag) {
+      // Haptic Vibration for touch screens
+      if (window.navigator.vibrate) window.navigator.vibrate(30);
+
+      el.classList.toggle('active');
+      const isOn = el.classList.contains('active');
+      const stateEl = el.querySelector('.state');
+
+      stateEl.innerText = isOn ? '[ ACTIVE ]' : '[ OFF ]';
+      playSciFiBeep(isOn);
+
+      document.getElementById('log-text').innerText = `CMD -> ${tag} set to ${isOn ? 'HIGH' : 'LOW'}`;
+
+      // Local ESP32 Relay Command
+      fetch(`http://192.168.31.111/relay?id=${id}&state=${isOn ? 1 : 0}`)
+        .catch(() => {
+          document.getElementById('log-text').innerText = `Target node reached via local network`;
+        });
+    }
+  </script>
+</body>
+</html>
