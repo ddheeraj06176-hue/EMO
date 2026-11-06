@@ -1592,39 +1592,4 @@ void Application::ResetProtocol() {
 }
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+//comp web emo is ready now now i am free toh complet my 11th study 
