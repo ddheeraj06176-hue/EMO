@@ -28,6 +28,15 @@
 #include <esp_wifi.h>
 #include <esp_http_server.h>
 
+// --- NimBLE Bluetooth Headers ---
+#include "nimble/nimble_port.h"
+#include "nimble/nimble_port_freertos.h"
+#include "host/ble_hs.h"
+#include "services/gap/ble_svc_gap.h"
+#include "services/gatt/ble_svc_gatt.h"
+
+#define TAG_BLE "EMO_BLE"
+
 // --- Zero-App BLE Media Keys Definition ---
 enum BleMediaKey {
     BLE_MEDIA_PLAY_PAUSE,
@@ -37,24 +46,75 @@ enum BleMediaKey {
     BLE_MEDIA_VOL_DOWN
 };
 
+static uint16_t hid_conn_handle = BLE_HS_CONN_HANDLE_NONE;
+static uint16_t hid_report_handle = 0;
+
 static void SendBleMediaCommand(BleMediaKey key) {
-    switch (key) {
-        case BLE_MEDIA_PLAY_PAUSE:
-            ESP_LOGI("EMO_MEDIA", "BLE HID Sent: Play/Pause toggled");
-            break;
-        case BLE_MEDIA_NEXT:
-            ESP_LOGI("EMO_MEDIA", "BLE HID Sent: Next Track");
-            break;
-        case BLE_MEDIA_PREV:
-            ESP_LOGI("EMO_MEDIA", "BLE HID Sent: Previous Track");
-            break;
-        case BLE_MEDIA_VOL_UP:
-            ESP_LOGI("EMO_MEDIA", "BLE HID Sent: Volume UP");
-            break;
-        case BLE_MEDIA_VOL_DOWN:
-            ESP_LOGI("EMO_MEDIA", "BLE HID Sent: Volume DOWN");
-            break;
+    if (hid_conn_handle == BLE_HS_CONN_HANDLE_NONE) {
+        ESP_LOGW(TAG_BLE, "Phone not connected via Bluetooth yet!");
+        return;
     }
+
+    uint8_t report = 0;
+    switch (key) {
+        case BLE_MEDIA_PLAY_PAUSE: report = 0x01; ESP_LOGI(TAG_BLE, "Play/Pause sent"); break;
+        case BLE_MEDIA_NEXT:       report = 0x02; ESP_LOGI(TAG_BLE, "Next Track sent"); break;
+        case BLE_MEDIA_PREV:       report = 0x04; ESP_LOGI(TAG_BLE, "Prev Track sent"); break;
+        case BLE_MEDIA_VOL_UP:     report = 0x08; ESP_LOGI(TAG_BLE, "Vol Up sent"); break;
+        case BLE_MEDIA_VOL_DOWN:   report = 0x10; ESP_LOGI(TAG_BLE, "Vol Down sent"); break;
+    }
+
+    struct os_mbuf *om = ble_hs_mbuf_from_flat(&report, sizeof(report));
+    ble_gattc_notify_custom(hid_conn_handle, hid_report_handle, om);
+
+    vTaskDelay(pdMS_TO_TICKS(50));
+
+    report = 0;
+    om = ble_hs_mbuf_from_flat(&report, sizeof(report));
+    ble_gattc_notify_custom(hid_conn_handle, hid_report_handle, om);
+}
+
+// BLE Advertising Function
+static void ble_app_advertise(void) {
+    struct ble_gap_adv_params adv_params;
+    struct ble_hs_adv_fields fields;
+    memset(&fields, 0, sizeof(fields));
+
+    fields.flags = BLE_HS_ADV_F_DISC_GEN | BLE_HS_ADV_F_BREDR_UNSUP;
+    fields.tx_pwr_lvl_is_present = 1;
+    fields.tx_pwr_lvl = BLE_HS_ADV_TX_PWR_LVL_AUTO;
+
+    const char *device_name = "EMO Media Remote";
+    fields.name = (uint8_t *)device_name;
+    fields.name_len = strlen(device_name);
+    fields.name_is_complete = 1;
+    fields.appearance = 0x0180;
+    fields.appearance_is_present = 1;
+
+    ble_gap_adv_set_fields(&fields);
+
+    memset(&adv_params, 0, sizeof(adv_params));
+    adv_params.conn_mode = BLE_GAP_CONN_MODE_UND;
+    adv_params.disc_mode = BLE_GAP_DISC_MODE_GEN;
+    ble_gap_adv_start(BLE_OWN_ADDR_PUBLIC, NULL, BLE_HS_FOREVER, &adv_params, NULL, NULL);
+
+    ESP_LOGI(TAG_BLE, ">>> BLE Broadcasting live as: %s <<<", device_name);
+}
+
+static void ble_host_task(void *param) {
+    nimble_port_run();
+    nimble_port_freertos_deinit();
+}
+
+static void InitEmoBluetooth() {
+    nimble_port_init();
+    ble_svc_gap_device_name_set("EMO Media Remote");
+    ble_svc_gap_init();
+    ble_svc_gatt_init();
+
+    ble_hs_cfg.sync_cb = ble_app_advertise;
+    nimble_port_freertos_init(ble_host_task);
+    ESP_LOGI(TAG_BLE, "NimBLE Stack initialized successfully");
 }
 
 // --- Local Web Dashboard Handlers ---
@@ -172,6 +232,9 @@ void Application::Initialize() {
     ESP_LOGI(TAG, "After board/audio init");
     SystemInfo::PrintHeapStats();
 
+    // Start Bluetooth stack
+    InitEmoBluetooth();
+
     AudioServiceCallbacks callbacks;
     callbacks.on_send_queue_available = [this]() {
         xEventGroupSetBits(event_group_, MAIN_EVENT_SEND_AUDIO);
@@ -273,7 +336,7 @@ void Application::Initialize() {
             return "TV switched";
         });
 
-  // BLE Media Control Tool (Phone Gaane/Volume Control - ZERO APPS)
+    // BLE Media Control Tool (Phone Gaane/Volume Control - ZERO APPS)
     mcp_server.AddTool("control_phone_media", "Control phone music playback (play, pause, next, prev, volup, voldown)",
         PropertyList({
             Property("command", kPropertyTypeString)
@@ -495,7 +558,7 @@ void Application::HandleNetworkConnectedEvent() {
 
     auto state = GetDeviceState();
     InitEmoRelaySender();
-   StartEmoWebServer();
+    StartEmoWebServer();
   
     if (state == kDeviceStateStarting || state == kDeviceStateWifiConfiguring) {
         SetDeviceState(kDeviceStateActivating);
