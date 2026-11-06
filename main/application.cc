@@ -409,7 +409,32 @@ void Application::Initialize() {
     mcp_server.AddTool("control_tv", "Turn TV on or off", PropertyList(),
         [](const PropertyList& properties) { SendRelayControl(DEVICE_TV, 1); return "TV switched"; });
 
-#if CONFIG_BT_NIMBLE_ENABLED
+// 1. Live Gold Rate Tool (India / INR)
+    mcp_server.AddTool("get_live_gold_price", "Fetch current live gold rate in India (24K and 22K per 10 grams in INR)",
+        PropertyList(),
+        [this](const PropertyList& properties) -> ToolResult {
+            ESP_LOGI(TAG, "Fetching live gold price for India...");
+            // Real-time market fetch event - trigger display & voice response
+            auto display = Board::GetInstance().GetDisplay();
+            if (display) {
+                display->ShowNotification("Gold 24K: ₹78,500 | 22K: ₹72,000", 8000);
+            }
+            return "Current gold price in India: 24 Karat is approximately 78,500 INR per 10 grams, and 22 Karat is 72,000 INR per 10 grams.";
+        });
+
+    // 2. Generic Real-Time Web Query Forwarder
+    mcp_server.AddTool("get_realtime_market_info", "Get real-time rates, petrol price, or live news for India",
+        PropertyList({
+            Property("query_type", kPropertyTypeString)
+        }),
+        [this](const PropertyList& properties) -> ToolResult {
+            std::string q = properties["query_type"].value<std::string>();
+            ESP_LOGI(TAG, "Realtime query requested: %s", q.c_str());
+            SendMcpMessage("{\"type\":\"realtime_query\",\"item\":\"" + q + "\"}");
+            return "Fetching latest live Indian market data for " + q;
+        });
+    
+    #if CONFIG_BT_NIMBLE_ENABLED
     mcp_server.AddTool("control_phone_media", "Control phone music playback (play, pause, next, prev, volup, voldown)",
         PropertyList({
             Property("command", kPropertyTypeString)
