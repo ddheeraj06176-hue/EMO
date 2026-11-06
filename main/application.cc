@@ -237,6 +237,7 @@ static esp_err_t root_get_handler(httpd_req_t *req) {
 }
 
 static esp_err_t relay_get_handler(httpd_req_t *req) {
+    httpd_resp_set_hdr(req, "Access-Control-Allow-Origin", "*");
     char buf[64];
     if (httpd_req_get_url_query_str(req, buf, sizeof(buf)) == ESP_OK) {
         char param[8];
@@ -244,6 +245,27 @@ static esp_err_t relay_get_handler(httpd_req_t *req) {
             uint8_t dev_id = atoi(param);
             SendRelayControl(dev_id, 1);
             ESP_LOGI("EMO_WEB", "Web UI toggled Relay ID: %d", dev_id);
+        }
+    }
+    httpd_resp_set_type(req, "application/json");
+    httpd_resp_sendstr(req, "{\"status\":\"ok\"}");
+    return ESP_OK;
+}
+
+static esp_err_t media_get_handler(httpd_req_t *req) {
+    httpd_resp_set_hdr(req, "Access-Control-Allow-Origin", "*");
+    char buf[64];
+    if (httpd_req_get_url_query_str(req, buf, sizeof(buf)) == ESP_OK) {
+        char cmd[16];
+        if (httpd_query_key_value(buf, "cmd", cmd, sizeof(cmd)) == ESP_OK) {
+#if CONFIG_BT_NIMBLE_ENABLED
+            if (strcmp(cmd, "play") == 0) SendBleMediaCommand(BLE_MEDIA_PLAY_PAUSE);
+            else if (strcmp(cmd, "next") == 0) SendBleMediaCommand(BLE_MEDIA_NEXT);
+            else if (strcmp(cmd, "prev") == 0) SendBleMediaCommand(BLE_MEDIA_PREV);
+            else if (strcmp(cmd, "volup") == 0) SendBleMediaCommand(BLE_MEDIA_VOL_UP);
+            else if (strcmp(cmd, "voldown") == 0) SendBleMediaCommand(BLE_MEDIA_VOL_DOWN);
+#endif
+            ESP_LOGI("EMO_WEB", "Web UI triggered Media Command: %s", cmd);
         }
     }
     httpd_resp_set_type(req, "application/json");
@@ -263,7 +285,10 @@ static httpd_handle_t StartEmoWebServer() {
         httpd_uri_t uri_relay = {.uri = "/relay", .method = HTTP_GET, .handler = relay_get_handler, .user_ctx = NULL};
         httpd_register_uri_handler(server, &uri_relay);
 
-        ESP_LOGI("EMO_WEB", "Local Web Dashboard running on port 80");
+        httpd_uri_t uri_media = {.uri = "/media", .method = HTTP_GET, .handler = media_get_handler, .user_ctx = NULL};
+        httpd_register_uri_handler(server, &uri_media);
+
+        ESP_LOGI("EMO_WEB", "Local Web Dashboard running on port 80 with Relay & Media handlers");
     }
     return server;
 }
@@ -409,12 +434,10 @@ void Application::Initialize() {
     mcp_server.AddTool("control_tv", "Turn TV on or off", PropertyList(),
         [](const PropertyList& properties) { SendRelayControl(DEVICE_TV, 1); return "TV switched"; });
 
-// 1. Live Gold Rate Tool (India / INR)
     mcp_server.AddTool("get_live_gold_price", "Fetch current live gold rate in India (24K and 22K per 10 grams in INR)",
         PropertyList(),
         [this](const PropertyList& properties) -> ToolResult {
             ESP_LOGI(TAG, "Fetching live gold price for India...");
-            // Real-time market fetch event - trigger display & voice response
             auto display = Board::GetInstance().GetDisplay();
             if (display) {
                 display->ShowNotification("Gold 24K: ₹78,500 | 22K: ₹72,000", 8000);
@@ -422,7 +445,6 @@ void Application::Initialize() {
             return "Current gold price in India: 24 Karat is approximately 78,500 INR per 10 grams, and 22 Karat is 72,000 INR per 10 grams.";
         });
 
-    // 2. Generic Real-Time Web Query Forwarder
     mcp_server.AddTool("get_realtime_market_info", "Get real-time rates, petrol price, or live news for India",
         PropertyList({
             Property("query_type", kPropertyTypeString)
@@ -433,8 +455,8 @@ void Application::Initialize() {
             SendMcpMessage("{\"type\":\"realtime_query\",\"item\":\"" + q + "\"}");
             return "Fetching latest live Indian market data for " + q;
         });
-    
-    #if CONFIG_BT_NIMBLE_ENABLED
+
+#if CONFIG_BT_NIMBLE_ENABLED
     mcp_server.AddTool("control_phone_media", "Control phone music playback (play, pause, next, prev, volup, voldown)",
         PropertyList({
             Property("command", kPropertyTypeString)
@@ -647,7 +669,6 @@ void Application::Run() {
 void Application::HandleNetworkConnectedEvent() {
     ESP_LOGI(TAG, "Network connected");
 
-    // Wi-Fi ko awake rakhne ke liye performance mode enable kiya gaya
     Board::GetInstance().SetPowerSaveLevel(PowerSaveLevel::PERFORMANCE);
 
     esp_netif_t* netif = esp_netif_get_handle_from_ifkey("WIFI_STA_DEF");
@@ -718,7 +739,6 @@ void Application::HandleActivationDoneEvent() {
   
     ota_.reset();
     auto& board = Board::GetInstance();
-    // Activation ke baad bhi performance mode maintain rakha gaya taaki web server response kare
     board.SetPowerSaveLevel(PowerSaveLevel::PERFORMANCE);
 
     if (!has_error) {
@@ -1531,6 +1551,7 @@ void Application::Reboot() {
         StopNotification();
     }
     if (protocol_ && protocol_->IsAudioChannelOpened()) {
+        ESP_LOGI(TAG, "Closing audio channel before reboot");
         protocol_->CloseAudioChannel();
     }
     protocol_.reset();
