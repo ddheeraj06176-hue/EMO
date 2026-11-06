@@ -68,21 +68,19 @@ endif()
 
 set(INCLUDE_DIRS "." "display" "display/lvgl_display" "display/lvgl_display/jpg" "audio" "audio/demuxer" "protocols" ${CMAKE_CURRENT_SOURCE_DIR}/boards/common)
 
-# Target-specific Bluetooth handling
+# Force Bluetooth NimBLE paths & dependencies for ESP32 and ESP32-S3
 set(EXTRA_BT_REQS "")
 if(CONFIG_IDF_TARGET_ESP32 OR CONFIG_IDF_TARGET_ESP32S3)
-    if(CONFIG_BT_ENABLED)
-        list(APPEND INCLUDE_DIRS
-            "$ENV{IDF_PATH}/components/bt/host/nimble/nimble/porting/nimble/include"
-            "$ENV{IDF_PATH}/components/bt/host/nimble/nimble/nimble/include"
-            "$ENV{IDF_PATH}/components/bt/host/nimble/nimble/nimble/host/include"
-            "$ENV{IDF_PATH}/components/bt/host/nimble/nimble/nimble/host/services/gap/include"
-            "$ENV{IDF_PATH}/components/bt/host/nimble/nimble/nimble/host/services/gatt/include"
-            "$ENV{IDF_PATH}/components/bt/porting/npl/freertos/include"
-            "$ENV{IDF_PATH}/components/bt/host/nimble/nimble/porting/npl/freertos/include"
-        )
-        set(EXTRA_BT_REQS bt)
-    endif()
+    list(APPEND INCLUDE_DIRS
+        "$ENV{IDF_PATH}/components/bt/host/nimble/nimble/porting/nimble/include"
+        "$ENV{IDF_PATH}/components/bt/host/nimble/nimble/nimble/include"
+        "$ENV{IDF_PATH}/components/bt/host/nimble/nimble/nimble/host/include"
+        "$ENV{IDF_PATH}/components/bt/host/nimble/nimble/nimble/host/services/gap/include"
+        "$ENV{IDF_PATH}/components/bt/host/nimble/nimble/nimble/host/services/gatt/include"
+        "$ENV{IDF_PATH}/components/bt/porting/npl/freertos/include"
+        "$ENV{IDF_PATH}/components/bt/host/nimble/nimble/porting/npl/freertos/include"
+    )
+    set(EXTRA_BT_REQS bt)
 endif()
 
 idf_build_get_property(build_components BUILD_COMPONENTS)
