@@ -28,7 +28,8 @@
 #include <esp_wifi.h>
 #include <esp_http_server.h>
 
-#if CONFIG_BT_NIMBLE_ENABLED
+// Force Enable NimBLE Bluetooth
+#if 1
 #include "nimble/nimble_port.h"
 #include "nimble/nimble_port_freertos.h"
 #include "host/ble_hs.h"
@@ -210,13 +211,11 @@ static void InitEmoBluetooth() {
     nimble_port_freertos_init(ble_host_task);
     ESP_LOGI(TAG_BLE, "NimBLE Stack initialized successfully with HID Service");
 }
-#else
-static void SendBleMediaCommand(int key) {}
-static void InitEmoBluetooth() {}
 #endif
 
 // --- Local Web Dashboard Handlers ---
 static esp_err_t root_get_handler(httpd_req_t *req) {
+    httpd_resp_set_hdr(req, "Access-Control-Allow-Origin", "*");
     const char* resp = 
         "<!DOCTYPE html><html><head><meta name='viewport' content='width=device-width, initial-scale=1'>"
         "<title>EMO Controller</title>"
@@ -258,13 +257,11 @@ static esp_err_t media_get_handler(httpd_req_t *req) {
     if (httpd_req_get_url_query_str(req, buf, sizeof(buf)) == ESP_OK) {
         char cmd[16];
         if (httpd_query_key_value(buf, "cmd", cmd, sizeof(cmd)) == ESP_OK) {
-#if CONFIG_BT_NIMBLE_ENABLED
             if (strcmp(cmd, "play") == 0) SendBleMediaCommand(BLE_MEDIA_PLAY_PAUSE);
             else if (strcmp(cmd, "next") == 0) SendBleMediaCommand(BLE_MEDIA_NEXT);
             else if (strcmp(cmd, "prev") == 0) SendBleMediaCommand(BLE_MEDIA_PREV);
             else if (strcmp(cmd, "volup") == 0) SendBleMediaCommand(BLE_MEDIA_VOL_UP);
             else if (strcmp(cmd, "voldown") == 0) SendBleMediaCommand(BLE_MEDIA_VOL_DOWN);
-#endif
             ESP_LOGI("EMO_WEB", "Web UI triggered Media Command: %s", cmd);
         }
     }
@@ -353,9 +350,8 @@ void Application::Initialize() {
     ESP_LOGI(TAG, "After board/audio init");
     SystemInfo::PrintHeapStats();
 
-#if CONFIG_BT_NIMBLE_ENABLED
+    // Force Init Bluetooth
     InitEmoBluetooth();
-#endif
 
     AudioServiceCallbacks callbacks;
     callbacks.on_send_queue_available = [this]() {
@@ -456,7 +452,6 @@ void Application::Initialize() {
             return "Fetching latest live Indian market data for " + q;
         });
 
-#if CONFIG_BT_NIMBLE_ENABLED
     mcp_server.AddTool("control_phone_media", "Control phone music playback (play, pause, next, prev, volup, voldown)",
         PropertyList({
             Property("command", kPropertyTypeString)
@@ -486,7 +481,6 @@ void Application::Initialize() {
                 return "Bluetooth is broadcasting as 'EMO Media Remote', but phone is not paired yet. Please pair from phone settings.";
             }
         });
-#endif
   
     mcp_server.AddTool("control_phone_torch", "Turn phone flashlight/torch on or off",
         PropertyList({
@@ -909,7 +903,10 @@ void Application::InitializeProtocol() {
         protocol_ = std::make_unique<MqttProtocol>();
     }
 
-    protocol_->OnConnected([this]() { DismissAlert(); });
+    protocol_->OnConnected([this]() { 
+        DismissAlert(); 
+        ESP_LOGI(TAG, "Connected to MQTT Server successfully");
+    });
 
     protocol_->OnNetworkError([this](const std::string& message) {
         last_error_message_ = message;
@@ -947,6 +944,20 @@ void Application::InitializeProtocol() {
             ESP_LOGW(TAG, "Incoming JSON message has no type");
             return;
         }
+
+        // --- CLOUD MQTT REMOTE RELAY TRIGGER ---
+        if (strcmp(type->valuestring, "cloud_relay") == 0) {
+            auto id_item = cJSON_GetObjectItem(root, "id");
+            auto state_item = cJSON_GetObjectItem(root, "state");
+            if (cJSON_IsNumber(id_item)) {
+                uint8_t dev_id = id_item->valueint;
+                uint8_t dev_state = (state_item && cJSON_IsNumber(state_item)) ? state_item->valueint : 1;
+                SendRelayControl(dev_id, dev_state);
+                ESP_LOGI(TAG, ">>> Cloud MQTT Command: Executed Relay ID %d -> %d <<<", dev_id, dev_state);
+            }
+            return;
+        }
+
         if (strcmp(type->valuestring, "notify") == 0) {
             auto audio_url = cJSON_GetObjectItem(root, "audio_url");
             if (!cJSON_IsString(audio_url) || audio_url->valuestring[0] == '\0') {
