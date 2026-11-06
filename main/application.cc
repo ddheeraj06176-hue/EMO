@@ -622,6 +622,9 @@ void Application::Run() {
 void Application::HandleNetworkConnectedEvent() {
     ESP_LOGI(TAG, "Network connected");
 
+    // Wi-Fi ko awake rakhne ke liye performance mode enable kiya gaya
+    Board::GetInstance().SetPowerSaveLevel(PowerSaveLevel::PERFORMANCE);
+
     esp_netif_t* netif = esp_netif_get_handle_from_ifkey("WIFI_STA_DEF");
     if (netif) {
         esp_netif_dns_info_t dns_info = {};
@@ -690,7 +693,8 @@ void Application::HandleActivationDoneEvent() {
   
     ota_.reset();
     auto& board = Board::GetInstance();
-    board.SetPowerSaveLevel(PowerSaveLevel::LOW_POWER);
+    // Activation ke baad bhi performance mode maintain rakha gaya taaki web server response kare
+    board.SetPowerSaveLevel(PowerSaveLevel::PERFORMANCE);
 
     if (!has_error) {
         Schedule([this]() {
@@ -746,7 +750,7 @@ void Application::CheckAssetsVersion() {
                 });
             });
 
-        board.SetPowerSaveLevel(PowerSaveLevel::LOW_POWER);
+        board.SetPowerSaveLevel(PowerSaveLevel::PERFORMANCE);
         vTaskDelay(pdMS_TO_TICKS(1000));
 
         if (!success) {
@@ -884,7 +888,7 @@ void Application::InitializeProtocol() {
     });
 
     protocol_->OnAudioChannelClosed([this, &board]() {
-        board.SetPowerSaveLevel(PowerSaveLevel::LOW_POWER);
+        board.SetPowerSaveLevel(PowerSaveLevel::PERFORMANCE);
         Schedule([this]() {
             auto display = Board::GetInstance().GetDisplay();
             display->SetChatMessage("system", "");
@@ -1421,7 +1425,7 @@ void Application::StartNotification(std::string audio_url, std::vector<NotifySub
     }
 
     if (!SetDeviceState(kDeviceStateNotifying)) {
-        board.SetPowerSaveLevel(PowerSaveLevel::LOW_POWER);
+        board.SetPowerSaveLevel(PowerSaveLevel::PERFORMANCE);
         return;
     }
 
@@ -1456,7 +1460,7 @@ void Application::StopNotification() {
     audio_service_.ResetDecoder();
     auto& board = Board::GetInstance();
     board.GetDisplay()->SetChatMessage("assistant", "");
-    board.SetPowerSaveLevel(PowerSaveLevel::LOW_POWER);
+    board.SetPowerSaveLevel(PowerSaveLevel::PERFORMANCE);
     if (GetDeviceState() == kDeviceStateNotifying) {
         SetDeviceState(kDeviceStateIdle);
     }
@@ -1553,7 +1557,7 @@ bool Application::UpgradeFirmware(const std::string& url, const std::string& ver
         ESP_LOGE(TAG,
                  "Firmware upgrade failed, restarting audio service and continuing operation...");
         audio_service_.Start();
-        board.SetPowerSaveLevel(PowerSaveLevel::LOW_POWER);
+        board.SetPowerSaveLevel(PowerSaveLevel::PERFORMANCE);
         Alert(Lang::Strings::ERROR, Lang::Strings::UPGRADE_FAILED, "cancel",
               Lang::Sounds::OGG_EXCLAMATION);
         vTaskDelay(pdMS_TO_TICKS(3000));
