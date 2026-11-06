@@ -43,18 +43,27 @@ set(SOURCES "audio/audio_codec.cc"
             "main.cc"
             )
 
+set(EXTRA_BT_DIRS "")
+set(EXTRA_BT_REQS "")
+
+if(CONFIG_BT_NIMBLE_ENABLED)
+    set(EXTRA_BT_DIRS
+        "$ENV{IDF_PATH}/components/bt/host/nimble/nimble/porting/nimble/include"
+        "$ENV{IDF_PATH}/components/bt/host/nimble/nimble/nimble/include"
+        "$ENV{IDF_PATH}/components/bt/host/nimble/nimble/nimble/host/include"
+        "$ENV{IDF_PATH}/components/bt/host/nimble/nimble/nimble/host/services/gap/include"
+        "$ENV{IDF_PATH}/components/bt/host/nimble/nimble/nimble/host/services/gatt/include"
+        "$ENV{IDF_PATH}/components/bt/porting/npl/freertos/include"
+        "$ENV{IDF_PATH}/components/bt/host/nimble/nimble/porting/npl/freertos/include"
+    )
+    set(EXTRA_BT_REQS bt)
+endif()
+
 idf_component_register(
     SRCS ${SOURCES}
-    INCLUDE_DIRS "." "display" "display/lvgl_display" "display/lvgl_display/jpg" "audio" "audio/demuxer" "protocols"
-                 "$ENV{IDF_PATH}/components/bt/host/nimble/nimble/porting/nimble/include"
-                 "$ENV{IDF_PATH}/components/bt/host/nimble/nimble/nimble/include"
-                 "$ENV{IDF_PATH}/components/bt/host/nimble/nimble/nimble/host/include"
-                 "$ENV{IDF_PATH}/components/bt/host/nimble/nimble/nimble/host/services/gap/include"
-                 "$ENV{IDF_PATH}/components/bt/host/nimble/nimble/nimble/host/services/gatt/include"
-                 "$ENV{IDF_PATH}/components/bt/porting/npl/freertos/include"
-                 "$ENV{IDF_PATH}/components/bt/host/nimble/nimble/porting/npl/freertos/include"
+    INCLUDE_DIRS "." "display" "display/lvgl_display" "display/lvgl_display/jpg" "audio" "audio/demuxer" "protocols" ${EXTRA_BT_DIRS}
     REQUIRES ${REQUIRES}
-    PRIV_REQUIRES ${PRIV_REQUIRES} bt
+    PRIV_REQUIRES ${PRIV_REQUIRES} ${EXTRA_BT_REQS}
 )
 
 # Add board common files
