@@ -24,9 +24,6 @@
 #include <algorithm>
 #include <cstring>
 #include <limits>
-#include <esp_http_client.h>
-#include <esp_crt_bundle.h>
-#include <lwip/dns.h>
 #include <esp_netif.h>
 #include <esp_wifi.h>
 
@@ -193,124 +190,29 @@ void Application::Initialize() {
             return "TV switched";
         });
 
-    // 5. Play Song Tool (Ultra-Reliable Akamai CDN Engine)
-    mcp_server.AddTool("play_song", "Play music or song by title",
+    // 5. Phone Flashlight Control Tool
+    mcp_server.AddTool("control_phone_torch", "Turn phone flashlight/torch on or off",
+        PropertyList({
+            Property("action", kPropertyTypeString)
+        }),
+        [this](const PropertyList& properties) -> ToolResult {
+            std::string action = properties["action"].value<std::string>();
+            if (action.empty()) action = "toggle";
+            ESP_LOGI(TAG, "Phone torch command: %s", action.c_str());
+            SendMcpMessage("{\"type\":\"phone_command\",\"cmd\":\"torch\",\"action\":\"" + action + "\"}");
+            return "Phone torch " + action + " sent";
+        });
+
+    // 6. Phone Companion Action Query (Gold rate, cement price, general query)
+    mcp_server.AddTool("query_phone_action", "Forward general internet or device queries to companion phone",
         PropertyList({
             Property("query", kPropertyTypeString)
         }),
         [this](const PropertyList& properties) -> ToolResult {
-            std::string query = properties["query"].value<std::string>();
-            if (query.empty()) {
-                query = "Alan Walker Faded";
-            }
-
-            ESP_LOGI("Music", "play_song tool triggered successfully with query: %s", query.c_str());
-
-            xTaskCreate([](void* arg) {
-                std::string* q_ptr = static_cast<std::string*>(arg);
-                std::string raw_query = *q_ptr;
-                delete q_ptr;
-
-                // 1. WiFi Performance Mode
-                esp_wifi_set_ps(WIFI_PS_NONE);
-
-                // 2. Force DNS to Google & Cloudflare safely in lwIP
-                ip_addr_t dns1, dns2;
-                dns1.addr = ipaddr_addr("8.8.8.8");
-                dns_setserver(0, &dns1);
-
-                dns2.addr = ipaddr_addr("1.1.1.1");
-                dns_setserver(1, &dns2);
-
-                // 3. Clean Query format
-                std::string clean_query = "";
-                for (unsigned char c : raw_query) {
-                    if (isalnum(c) || c == '-' || c == '_' || c == '.') {
-                        clean_query += c;
-                    } else if (c == ' ') {
-                        clean_query += "+";
-                    }
-                }
-                if (clean_query.empty()) clean_query = "Alan+Walker+Faded";
-
-                std::string api_url = "https://itunes.apple.com/search?term=" + clean_query + "&entity=song&limit=1";
-                ESP_LOGI("Music", "Fetching API: %s", api_url.c_str());
-
-                esp_http_client_config_t config = {};
-                config.url = api_url.c_str();
-                config.timeout_ms = 10000;
-                config.crt_bundle_attach = esp_crt_bundle_attach;
-                config.buffer_size = 4096;
-                config.buffer_size_tx = 1024;
-                config.max_redirection_count = 5;
-                config.skip_cert_common_name_check = true;
-
-                esp_http_client_handle_t client = esp_http_client_init(&config);
-                esp_http_client_set_header(client, "User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64)");
-                esp_http_client_set_header(client, "Accept", "application/json");
-
-                esp_err_t err = esp_http_client_open(client, 0);
-                std::string audio_url = "";
-                std::string track_name = raw_query;
-
-                if (err == ESP_OK) {
-                    esp_http_client_fetch_headers(client);
-                    int status_code = esp_http_client_get_status_code(client);
-                    ESP_LOGI("Music", "HTTP Status = %d", status_code);
-
-                    if (status_code == 200) {
-                        std::string res = "";
-                        char chunk[1024];
-                        int r = 0;
-                        while ((r = esp_http_client_read(client, chunk, sizeof(chunk) - 1)) > 0) {
-                            chunk[r] = '\0';
-                            res += chunk;
-                            if (res.length() > 32768) break;
-                        }
-
-                        cJSON* root = cJSON_Parse(res.c_str());
-                        if (root) {
-                            cJSON* results = cJSON_GetObjectItem(root, "results");
-                            if (results && cJSON_IsArray(results) && cJSON_GetArraySize(results) > 0) {
-                                cJSON* song = cJSON_GetArrayItem(results, 0);
-                                cJSON* name = cJSON_GetObjectItem(song, "trackName");
-                                if (name && cJSON_IsString(name)) {
-                                    track_name = name->valuestring;
-                                }
-
-                                cJSON* preview = cJSON_GetObjectItem(song, "previewUrl");
-                                if (preview && cJSON_IsString(preview)) {
-                                    audio_url = preview->valuestring;
-                                }
-                            }
-                            cJSON_Delete(root);
-                        }
-                    }
-                } else {
-                    ESP_LOGE("Music", "HTTP open failed: %s", esp_err_to_name(err));
-                }
-                esp_http_client_cleanup(client);
-
-                if (!audio_url.empty()) {
-                    auto& app = Application::GetInstance();
-                    vTaskDelay(pdMS_TO_TICKS(1500));
-
-                    app.Schedule([&app]() {
-                        app.SetDeviceState(kDeviceStateIdle);
-                    });
-
-                    vTaskDelay(pdMS_TO_TICKS(200));
-
-                    ESP_LOGI("Music", "Playing Audio: %s (%s)", track_name.c_str(), audio_url.c_str());
-                    app.StartNotification(audio_url, {});
-                } else {
-                    ESP_LOGW("Music", "Song not found on endpoint");
-                }
-
-                vTaskDelete(NULL);
-            }, "music_task", 10240, new std::string(query), 4, NULL);
-
-            return "Playing " + query;
+            std::string q = properties["query"].value<std::string>();
+            ESP_LOGI(TAG, "Phone query forwarded: %s", q.c_str());
+            SendMcpMessage("{\"type\":\"phone_query\",\"query\":\"" + q + "\"}");
+            return "Query sent to phone companion";
         });
 
     // Set network event callback for UI updates and network state handling
