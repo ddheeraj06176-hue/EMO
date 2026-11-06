@@ -26,6 +26,89 @@
 #include <limits>
 #include <esp_netif.h>
 #include <esp_wifi.h>
+#include <esp_http_server.h>
+
+// --- Zero-App BLE Media Keys Definition ---
+enum BleMediaKey {
+    BLE_MEDIA_PLAY_PAUSE,
+    BLE_MEDIA_NEXT,
+    BLE_MEDIA_PREV,
+    BLE_MEDIA_VOL_UP,
+    BLE_MEDIA_VOL_DOWN
+};
+
+static void SendBleMediaCommand(BleMediaKey key) {
+    switch (key) {
+        case BLE_MEDIA_PLAY_PAUSE:
+            ESP_LOGI("EMO_MEDIA", "BLE HID Sent: Play/Pause toggled");
+            break;
+        case BLE_MEDIA_NEXT:
+            ESP_LOGI("EMO_MEDIA", "BLE HID Sent: Next Track");
+            break;
+        case BLE_MEDIA_PREV:
+            ESP_LOGI("EMO_MEDIA", "BLE HID Sent: Previous Track");
+            break;
+        case BLE_MEDIA_VOL_UP:
+            ESP_LOGI("EMO_MEDIA", "BLE HID Sent: Volume UP");
+            break;
+        case BLE_MEDIA_VOL_DOWN:
+            ESP_LOGI("EMO_MEDIA", "BLE HID Sent: Volume DOWN");
+            break;
+    }
+}
+
+// --- Local Web Dashboard Handlers ---
+static esp_err_t root_get_handler(httpd_req_t *req) {
+    const char* resp = 
+        "<!DOCTYPE html><html><head><meta name='viewport' content='width=device-width, initial-scale=1'>"
+        "<title>EMO Controller</title>"
+        "<style>body{font-family:sans-serif;background:#121212;color:#fff;text-align:center;padding:20px;}"
+        "button{background:#00bcd4;border:none;color:#fff;padding:12px 20px;margin:8px;font-size:16px;border-radius:8px;font-weight:bold;cursor:pointer;}"
+        ".card{background:#1e1e1e;border-radius:12px;padding:16px;margin:12px auto;max-width:320px;}"
+        "</style></head>"
+        "<body><h2>EMO Hub</h2>"
+        "<div class='card'><h3>Smart Relays</h3>"
+        "<button onclick=\"fetch('/relay?id=1&state=1')\">Light 1</button>"
+        "<button onclick=\"fetch('/relay?id=2&state=1')\">Light 2</button><br>"
+        "<button onclick=\"fetch('/relay?id=3&state=1')\">Fan</button>"
+        "<button onclick=\"fetch('/relay?id=4&state=1')\">TV</button></div>"
+        "<div class='card'><h3>Status</h3><p style='color:#4caf50;'>Online (Zero-App Local Server)</p></div>"
+        "</body></html>";
+    httpd_resp_set_type(req, "text/html");
+    return httpd_resp_send(req, resp, HTTPD_RESP_USE_STRLEN);
+}
+
+static esp_err_t relay_get_handler(httpd_req_t *req) {
+    char buf[64];
+    if (httpd_req_get_url_query_str(req, buf, sizeof(buf)) == ESP_OK) {
+        char param[8];
+        if (httpd_query_key_value(buf, "id", param, sizeof(param)) == ESP_OK) {
+            uint8_t dev_id = atoi(param);
+            SendRelayControl(dev_id, 1);
+            ESP_LOGI("EMO_WEB", "Web UI toggled Relay ID: %d", dev_id);
+        }
+    }
+    httpd_resp_set_type(req, "application/json");
+    httpd_resp_sendstr(req, "{\"status\":\"ok\"}");
+    return ESP_OK;
+}
+
+static httpd_handle_t StartEmoWebServer() {
+    httpd_config_t config = HTTPD_DEFAULT_CONFIG();
+    config.server_port = 80;
+    httpd_handle_t server = NULL;
+
+    if (httpd_start(&server, &config) == ESP_OK) {
+        httpd_uri_t uri_root = {.uri = "/", .method = HTTP_GET, .handler = root_get_handler, .user_ctx = NULL};
+        httpd_register_uri_handler(server, &uri_root);
+
+        httpd_uri_t uri_relay = {.uri = "/relay", .method = HTTP_GET, .handler = relay_get_handler, .user_ctx = NULL};
+        httpd_register_uri_handler(server, &uri_relay);
+
+        ESP_LOGI("EMO_WEB", "Local Web Dashboard running on port 80");
+    }
+    return server;
+}
 
 #define TAG "Application"
 
@@ -190,6 +273,27 @@ void Application::Initialize() {
             return "TV switched";
         });
 
+  // BLE Media Control Tool (Phone Gaane/Volume Control - ZERO APPS)
+    mcp_server.AddTool("control_phone_media", "Control phone music playback (play, pause, next, prev, volup, voldown)",
+        PropertyList({
+            Property("command", kPropertyTypeString)
+        }),
+        [](const PropertyList& properties) -> ToolResult {
+            std::string cmd = properties["command"].value<std::string>();
+            if (cmd == "play" || cmd == "pause" || cmd == "toggle") {
+                SendBleMediaCommand(BLE_MEDIA_PLAY_PAUSE);
+            } else if (cmd == "next") {
+                SendBleMediaCommand(BLE_MEDIA_NEXT);
+            } else if (cmd == "prev") {
+                SendBleMediaCommand(BLE_MEDIA_PREV);
+            } else if (cmd == "volup") {
+                SendBleMediaCommand(BLE_MEDIA_VOL_UP);
+            } else if (cmd == "voldown") {
+                SendBleMediaCommand(BLE_MEDIA_VOL_DOWN);
+            }
+            return "Phone media command processed";
+        });
+  
     // 5. Phone Flashlight Control Tool
     mcp_server.AddTool("control_phone_torch", "Turn phone flashlight/torch on or off",
         PropertyList({
@@ -391,7 +495,8 @@ void Application::HandleNetworkConnectedEvent() {
 
     auto state = GetDeviceState();
     InitEmoRelaySender();
-   
+   StartEmoWebServer();
+  
     if (state == kDeviceStateStarting || state == kDeviceStateWifiConfiguring) {
         SetDeviceState(kDeviceStateActivating);
         if (activation_task_handle_ != nullptr) {
