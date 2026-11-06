@@ -28,14 +28,12 @@
 #include <esp_wifi.h>
 #include <esp_http_server.h>
 
-// --- NimBLE Bluetooth Headers ---
 #if CONFIG_BT_NIMBLE_ENABLED
 #include "nimble/nimble_port.h"
 #include "nimble/nimble_port_freertos.h"
 #include "host/ble_hs.h"
 #include "services/gap/ble_svc_gap.h"
 #include "services/gatt/ble_svc_gatt.h"
-#endif
 
 #define TAG_BLE "EMO_BLE"
 
@@ -47,7 +45,6 @@ enum BleMediaKey {
     BLE_MEDIA_VOL_DOWN
 };
 
-#if CONFIG_BT_NIMBLE_ENABLED
 static uint16_t hid_conn_handle = BLE_HS_CONN_HANDLE_NONE;
 static uint16_t hid_report_handle = 0;
 static bool ble_is_connected = false;
@@ -87,6 +84,8 @@ static int ble_gap_event(struct ble_gap_event *event, void *arg) {
                 hid_conn_handle = event->connect.conn_handle;
                 ble_is_connected = true;
                 ESP_LOGI(TAG_BLE, ">>> Phone Connected Successfully! Handle: %d <<<", hid_conn_handle);
+                // Pair/Bonding security initiate karo taaki Android connection drop na kare
+                ble_gap_security_initiate(event->connect.conn_handle);
             } else {
                 ble_app_advertise();
             }
@@ -98,6 +97,21 @@ static int ble_gap_event(struct ble_gap_event *event, void *arg) {
             ble_is_connected = false;
             ble_app_advertise();
             break;
+
+        case BLE_GAP_EVENT_CONN_UPDATE:
+            ESP_LOGI(TAG_BLE, "Connection parameters updated");
+            break;
+
+        case BLE_GAP_EVENT_ENC_CHANGE:
+            ESP_LOGI(TAG_BLE, "Encryption change event; status=%d", event->enc_change.status);
+            break;
+
+        case BLE_GAP_EVENT_REPEAT_PAIRING:
+            // Purana bonding data clean karke nayi pairing allow karo
+            struct ble_gap_conn_desc desc;
+            ble_gap_conn_find(event->repeat_pairing.conn_handle, &desc);
+            ble_store_util_delete_peer(&desc.peer_id_addr);
+            return BLE_GAP_REPEAT_PAIRING_RETRY;
 
         default:
             break;
@@ -139,13 +153,22 @@ static void ble_host_task(void *param) {
 
 static void InitEmoBluetooth() {
     nimble_port_init();
+
+    // Security Settings (Android Just-Works Pairing)
+    ble_hs_cfg.sm_io_cap = BLE_SM_IO_CAP_NO_IO;
+    ble_hs_cfg.sm_bonding = 1;
+    ble_hs_cfg.sm_mitm = 0;
+    ble_hs_cfg.sm_sc = 1;
+    ble_hs_cfg.sm_our_key_dist = BLE_SM_PAIR_KEY_DIST_ENC | BLE_SM_PAIR_KEY_DIST_ID;
+    ble_hs_cfg.sm_their_key_dist = BLE_SM_PAIR_KEY_DIST_ENC | BLE_SM_PAIR_KEY_DIST_ID;
+
     ble_svc_gap_device_name_set("EMO Media Remote");
     ble_svc_gap_init();
     ble_svc_gatt_init();
 
     ble_hs_cfg.sync_cb = ble_app_advertise;
     nimble_port_freertos_init(ble_host_task);
-    ESP_LOGI(TAG_BLE, "NimBLE Stack initialized successfully");
+    ESP_LOGI(TAG_BLE, "NimBLE Stack initialized successfully with SMP Bonding");
 }
 #else
 static void SendBleMediaCommand(BleMediaKey key) {
