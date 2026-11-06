@@ -44,6 +44,7 @@ set(SOURCES "audio/audio_codec.cc"
             )
 
 set(INCLUDE_DIRS "." "display" "display/lvgl_display" "display/lvgl_display/jpg" "audio" "audio/demuxer" "protocols")
+list(APPEND PRIV_REQUIRES bt nimble)
 
 # Add board common files
 list(APPEND SOURCES
