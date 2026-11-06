@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>EMO AI Control</title>
+  <style>
+    :root {
+      --bg: #07090e;
+      --card-bg: rgba(20, 26, 38, 0.75);
+      --card-border: rgba(255, 255, 255, 0.08);
+      --accent-cyan: #00f2fe;
+      --text-main: #f1f5f9;
+      --text-muted: #64748b;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; font-family: sans-serif; -webkit-tap-highlight-color: transparent; }
+    body {
+      background: radial-gradient(circle at 50% 0%, #151e32 0%, var(--bg) 70%);
+      color: var(--text-main);
+      min-height: 100vh;
+      padding: 24px 16px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+    .header { width: 100%; max-width: 360px; display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; }
+    .status-pill { background: rgba(16, 185, 129, 0.15); border: 1px solid #10b981; padding: 5px 12px; border-radius: 20px; font-size: 12px; color: #34d399; font-weight: bold; }
+    .grid { width: 100%; max-width: 360px; display: grid; grid-template-columns: repeat(2, 1fr); gap: 14px; }
+    .card {
+      background: var(--card-bg);
+      border: 1px solid var(--card-border);
+      border-radius: 18px;
+      padding: 16px;
+      height: 130px;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .card:active { transform: scale(0.96); }
+    .card.active { border-color: var(--accent-cyan); box-shadow: 0 0 15px rgba(0, 242, 254, 0.3); }
+    .top { display: flex; justify-content: space-between; align-items: center; font-size: 24px; }
+    .sw { width: 34px; height: 18px; background: rgba(255,255,255,0.2); border-radius: 20px; position: relative; }
+    .sw::after { content:''; position: absolute; top: 2px; left: 2px; width: 14px; height: 14px; background: #fff; border-radius: 50%; transition: 0.2s; }
+    .card.active .sw { background: var(--accent-cyan); }
+    .card.active .sw::after { transform: translateX(16px); }
+    .name { font-size: 15px; font-weight: bold; }
+    .st { font-size: 12px; color: var(--text-muted); }
+    .card.active .st { color: var(--accent-cyan); }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <div><h2>EMO Hub</h2><p style="font-size:12px; color:#64748b;">Smart Desk Dashboard</p></div>
+    <div class="status-pill">● Online</div>
+  </div>
+  <div class="grid">
+    <div class="card" onclick="toggleRelay(this, 1)">
+      <div class="top"><span>💡</span><div class="sw"></div></div>
+      <div><div class="name">Light 1</div><div class="st">OFF</div></div>
+    </div>
+    <div class="card" onclick="toggleRelay(this, 2)">
+      <div class="top"><span>💡</span><div class="sw"></div></div>
+      <div><div class="name">Light 2</div><div class="st">OFF</div></div>
+    </div>
+    <div class="card" onclick="toggleRelay(this, 3)">
+      <div class="top"><span>🌀</span><div class="sw"></div></div>
+      <div><div class="name">Fan</div><div class="st">OFF</div></div>
+    </div>
+    <div class="card" onclick="toggleRelay(this, 4)">
+      <div class="top"><span>📺</span><div class="sw"></div></div>
+      <div><div class="name">TV</div><div class="st">OFF</div></div>
+    </div>
+  </div>
+  <script>
+    function toggleRelay(el, id) {
+      if(window.navigator.vibrate) window.navigator.vibrate(25);
+      el.classList.toggle('active');
+      const st = el.querySelector('.st');
+      const isOn = el.classList.contains('active');
+      st.innerText = isOn ? 'ON' : 'OFF';
+      fetch('http://192.168.31.111/relay?id=' + id + '&state=' + (isOn ? 1 : 0));
+    }
+  </script>
+</body>
+</html>
