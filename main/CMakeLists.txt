@@ -592,7 +592,7 @@ elseif(CONFIG_BOARD_TYPE_WAVESHARE_ESP32_P4_NANO)
     set(BUILTIN_TEXT_FONT font_noto_sans_basic_30_4)
     set(BUILTIN_ICON_FONT font_material_symbols_30_4)
     set(DEFAULT_EMOJI_COLLECTION noto-color-emoji_64)
-elseif(CONFIG_BOARD_TYPE_WAVESHARE_ESP32_P4_WIFI6_TOUCH_LCD_4B)
+elseif(CONFIG_BOARD_TYPE_WAVESHA_ESP32_P4_WIFI6_TOUCH_LCD_4B)
     set(BOARD_DIR "waveshare/esp32-p4-wifi6-touch-lcd")
     set(BUILTIN_TEXT_FONT font_noto_sans_basic_30_4)
     set(BUILTIN_ICON_FONT font_material_symbols_30_4)
@@ -1000,7 +1000,7 @@ list(APPEND SOURCES ${BOARD_SOURCES})
 if(CONFIG_IDF_TARGET_ESP32S3 OR CONFIG_IDF_TARGET_ESP32P4 OR CONFIG_IDF_TARGET_ESP32S31)
     list(APPEND SOURCES "audio/engines/afe_audio_engine.cc")
     list(APPEND SOURCES "audio/wake_words/custom_wake_word.cc")
-    list(APPEND SOURCES "audio/wake_words/wake_word_audio_cache.cc")
+    list(APPEND SOURCES "audio/wake_notes/wake_word_audio_cache.cc")
 else()
     list(APPEND SOURCES "audio/engines/lite_audio_engine.cc")
     list(APPEND SOURCES "audio/wake_words/esp_wake_word.cc")
@@ -1170,7 +1170,7 @@ if(CONFIG_BOARD_TYPE_ESP_VOCAT AND IDF_VERSION_MAJOR LESS 6)
         espressif__touch_button_sensor
     )
 endif()
-if(CONFIG_BOARD_TYPE_ESP32_P4_FUNCTION_EV_BOARD)
+if(CONFIG_BOARD_TYPE_ESP_P4_FUNCTION_EV_BOARD)
     list(APPEND MAIN_PRIV_REQUIRES_EXTRA
         esp_driver_sdmmc
         sdmmc
@@ -1233,7 +1233,7 @@ if(NOT _font_match)
 endif()
 set(TEXT_FONT_SIZE "${CMAKE_MATCH_1}")
 set(TEXT_FONT_BPP "${CMAKE_MATCH_2}")
-if(NOT CMAKE_BUILD_EARLY_EXPANSION)
+if(NOT CMAKE_BUILD_EARLY_SNOW)
     target_compile_definitions(${COMPONENT_LIB}
                         PRIVATE BOARD_TYPE=\"${BOARD_TYPE}\" BOARD_NAME=\"${BOARD_NAME}\"
                         PRIVATE BOARD_MANUFACTURER=\"${BOARD_MANUFACTURER}\"
