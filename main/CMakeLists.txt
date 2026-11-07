@@ -71,14 +71,15 @@ set(EXTRA_BT_REQS "")
 if(CONFIG_IDF_TARGET_ESP32 OR CONFIG_IDF_TARGET_ESP32S3)
     list(APPEND INCLUDE_DIRS
         "$ENV{IDF_PATH}/components/bt/porting/include"
+        "$ENV{IDF_PATH}/components/bt/porting_btdm/controller/ble/include"
         "$ENV{IDF_PATH}/components/bt/host/nimble/port/include"
-        "$ENV{IDF_PATH}/components/bt/host/nimble/nimble/porting/nimble/include"
+        "$ENV{IDF_PATH}/components/bt/host/nimble/esp-hci/include"
+        "$ENV{IDF_PATH}/components/bt/host/nimble/nimble/include"
         "$ENV{IDF_PATH}/components/bt/host/nimble/nimble/nimble/include"
-        "$ENV{IDF_PATH}/components/bt/host/nimble/nimble/nimble/host/include"
-        "$ENV{IDF_PATH}/components/bt/host/nimble/nimble/nimble/host/services/gap/include"
-        "$ENV{IDF_PATH}/components/bt/host/nimble/nimble/nimble/host/services/gatt/include"
+        "$ENV{IDF_PATH}/components/bt/host/nimble/nimble/nimble/transport/include"
+        "$ENV{IDF_PATH}/components/bt/host/nimble/nimble/porting/nimble/include"
+        "$ENV{IDF_PATH}/components/bt/host/nimble/nimble/nimble/host/util/include"
         "$ENV{IDF_PATH}/components/bt/porting/npl/freertos/include"
-        "$ENV{IDF_PATH}/components/bt/host/nimble/nimble/porting/npl/freertos/include"
     )
     set(EXTRA_BT_REQS bt)
 endif()
@@ -1126,15 +1127,15 @@ file(GLOB COMMON_SOUNDS ${CMAKE_CURRENT_SOURCE_DIR}/assets/common/*.ogg)
 
 if(CONFIG_IDF_TARGET_ESP32)
     list(REMOVE_ITEM SOURCES "audio/codecs/box_audio_codec.cc"
-                             "audio/codecs/es8388_audio_codec.cc"
-                             "audio/codecs/es8389_audio_codec.cc"
-                             "led/gpio_led.cc"
-                             "display/lvgl_display/jpg/image_to_jpeg.cpp"
-                             "display/lvgl_display/jpg/jpeg_to_image.c"
-                             "boards/common/nt26_board.cc"
-                             "boards/common/ml307_board.cc"
-                             "boards/common/dual_network_board.cc"
-                             )
+                            "audio/codecs/es8388_audio_codec.cc"
+                            "audio/codecs/es8389_audio_codec.cc"
+                            "led/gpio_led.cc"
+                            "display/lvgl_display/jpg/image_to_jpeg.cpp"
+                            "display/lvgl_display/jpg/jpeg_to_image.c"
+                            "boards/common/nt26_board.cc"
+                            "boards/common/ml307_board.cc"
+                            "boards/common/dual_network_board.cc"
+                            )
 endif()
 
 if(CONFIG_IDF_TARGET_ESP32S3 OR CONFIG_IDF_TARGET_ESP32P4)
@@ -1212,6 +1213,7 @@ idf_component_register(SRCS ${SOURCES}
                         mqtt
                         bt
                         esp_nimble_hci
+                        ${EXTRA_BT_REQS}
                         ${MAIN_PRIV_REQUIRES_EXTRA}
                     )
 
@@ -1535,16 +1537,3 @@ if ("${size}" AND "${offset}")
 else()
     message(STATUS "Assets partition not found, using v1 partition table")
 endif()
-
-
-
-
-
-
-
-
-
-
-
-
-
