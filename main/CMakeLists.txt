@@ -63,10 +63,14 @@ list(APPEND SOURCES
     "boards/common/system_reset.cc"
 )
 
+# Standard Include Dirs (board.h, audio headers, etc.)
+set(INCLUDE_DIRS "." "display" "display/lvgl_display" "display/lvgl_display/jpg" "audio" "audio/demuxer" "protocols" "${CMAKE_CURRENT_SOURCE_DIR}/boards/common")
+
 # Target-specific Bluetooth NimBLE handling (Force added for ESP32/S3)
 set(EXTRA_BT_REQS "")
 if(CONFIG_IDF_TARGET_ESP32 OR CONFIG_IDF_TARGET_ESP32S3)
     list(APPEND INCLUDE_DIRS
+        "$ENV{IDF_PATH}/components/bt/host/nimble/port/include"
         "$ENV{IDF_PATH}/components/bt/host/nimble/nimble/porting/nimble/include"
         "$ENV{IDF_PATH}/components/bt/host/nimble/nimble/nimble/include"
         "$ENV{IDF_PATH}/components/bt/host/nimble/nimble/nimble/host/include"
