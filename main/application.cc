@@ -82,18 +82,23 @@ static int gatt_svr_chr_access_hid(uint16_t conn_handle, uint16_t attr_handle,
     return 0;
 }
 
+// Static UUID objects to avoid taking address of rvalues in C++23
+static const ble_uuid16_t g_uuid_hid = BLE_UUID16_INIT(0x1812);
+static const ble_uuid16_t g_uuid_report_map = BLE_UUID16_INIT(0x2A4B);
+static const ble_uuid16_t g_uuid_report = BLE_UUID16_INIT(0x2A4D);
+
 static const struct ble_gatt_svc_def gatt_svr_svcs[] = {
     {
         .type = BLE_GATT_SVC_TYPE_PRIMARY,
-        .uuid = BLE_UUID16_DECLARE(0x1812), // HID Service
+        .uuid = (const ble_uuid_t *)&g_uuid_hid, // HID Service
         .characteristics = (struct ble_gatt_chr_def[]) {
             {
-                .uuid = BLE_UUID16_DECLARE(0x2A4B), // Report Map
+                .uuid = (const ble_uuid_t *)&g_uuid_report_map, // Report Map
                 .access_cb = gatt_svr_chr_access_hid,
                 .flags = BLE_GATT_CHR_F_READ,
             },
             {
-                .uuid = BLE_UUID16_DECLARE(0x2A4D), // Report
+                .uuid = (const ble_uuid_t *)&g_uuid_report, // Report
                 .access_cb = gatt_svr_chr_access_hid,
                 .flags = BLE_GATT_CHR_F_READ | BLE_GATT_CHR_F_NOTIFY,
                 .val_handle = &hid_report_handle,
@@ -364,11 +369,11 @@ Application::Application() : notify_player_(audio_service_) {
 #endif
 
     esp_timer_create_args_t clock_timer_args = {.callback =
-                                                    [](void* arg) {
-                                                        Application* app = (Application*)arg;
-                                                        xEventGroupSetBits(app->event_group_,
-                                                                           MAIN_EVENT_CLOCK_TICK);
-                                                    },
+                                                [](void* arg) {
+                                                    Application* app = (Application*)arg;
+                                                    xEventGroupSetBits(app->event_group_,
+                                                                       MAIN_EVENT_CLOCK_TICK);
+                                                },
                                                 .arg = this,
                                                 .dispatch_method = ESP_TIMER_TASK,
                                                 .name = "clock_timer",
