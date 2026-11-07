@@ -1216,9 +1216,9 @@ idf_component_register(SRCS ${SOURCES}
                     )
 
 target_include_directories(${COMPONENT_LIB} PRIVATE
-    "/opt/esp/idf/components/bt/porting/include"
-    "/opt/esp/idf/components/bt/porting_btdm/controller/ble/include"
-    "/opt/esp/idf/components/bt/host/nimble/port/include"
+    "$ENV{IDF_PATH}/components/bt/porting/include"
+    "$ENV{IDF_PATH}/components/bt/porting_btdm/controller/ble/include"
+    "$ENV{IDF_PATH}/components/bt/host/nimble/port/include"
 )
 
 if(NOT CMAKE_BUILD_EARLY_EXPANSION)
