@@ -30,13 +30,12 @@
 #include <mqtt_client.h>
 
 // --- Clean NimBLE Headers in Correct IDF Sequence ---
-#include "esp_nimble_hci.h"
 #include "nimble/nimble_port.h"
 #include "nimble/nimble_port_freertos.h"
 #include "host/ble_hs.h"
 #include "host/util/util.h"
 #include "services/gap/ble_svc_gap.h"
-#include "services/gatt/ble_svc_gatt.h"
+#include "services/gatt/ble_svc_gatt.h" 
 
 #define TAG_BLE "EMO_BLE"
 
