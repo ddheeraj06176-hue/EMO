@@ -71,14 +71,8 @@ set(EXTRA_BT_REQS "")
 if(CONFIG_IDF_TARGET_ESP32 OR CONFIG_IDF_TARGET_ESP32S3)
     list(APPEND INCLUDE_DIRS
         "$ENV{IDF_PATH}/components/bt/porting/include"
-        "$ENV{IDF_PATH}/components/bt/porting_btdm/controller/ble/include"
         "$ENV{IDF_PATH}/components/bt/host/nimble/port/include"
-        "$ENV{IDF_PATH}/components/bt/host/nimble/esp-hci/include"
         "$ENV{IDF_PATH}/components/bt/host/nimble/nimble/include"
-        "$ENV{IDF_PATH}/components/bt/host/nimble/nimble/nimble/include"
-        "$ENV{IDF_PATH}/components/bt/host/nimble/nimble/nimble/transport/include"
-        "$ENV{IDF_PATH}/components/bt/host/nimble/nimble/porting/nimble/include"
-        "$ENV{IDF_PATH}/components/bt/host/nimble/nimble/nimble/host/util/include"
         "$ENV{IDF_PATH}/components/bt/porting/npl/freertos/include"
     )
     set(EXTRA_BT_REQS bt)
