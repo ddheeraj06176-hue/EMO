@@ -1228,7 +1228,7 @@ menu "TAIJIPAI_S3_CONFIG"
             bool "I2S Type STD"
         config TAIJIPAI_I2S_TYPE_PDM
             bool "I2S Type PDM"
-    endchoice
+    choice
 
     config I2S_USE_2SLOT
     bool "Enable I2S 2 Slot"
