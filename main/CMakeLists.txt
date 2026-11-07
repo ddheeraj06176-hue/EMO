@@ -887,7 +887,7 @@ elseif(CONFIG_BOARD_TYPE_ELECTRON_BOT)
     set(BOARD_DIR "electron-bot")
     set(BUILTIN_TEXT_FONT font_noto_sans_basic_20_4)
     set(BUILTIN_ICON_FONT font_material_symbols_20_4)
-    set(DEFAULT_EMOJI_COLLECTION otto-gif)
+    set(DEFAULT_EMOJI_COLLECTION noto-color-emoji_64)
 elseif(CONFIG_BOARD_TYPE_BREAD_COMPACT_WIFI_CAM)
     set(BOARD_DIR "bread-compact-wifi-s3cam")
     set(BUILTIN_TEXT_FONT font_noto_sans_basic_16_4)
@@ -1210,10 +1210,10 @@ idf_component_register(SRCS ${SOURCES}
                         efuse
                         fatfs
                         xiaozhi-fonts
+                        mqtt
                         ${EXTRA_BT_REQS}
                         ${MAIN_PRIV_REQUIRES_EXTRA}
                     )
-target_link_libraries(${COMPONENT_LIB} PRIVATE idf::bt idf::mqtt)
 
 target_include_directories(${COMPONENT_LIB} PRIVATE
     "/opt/esp/idf/components/bt/porting/include"
