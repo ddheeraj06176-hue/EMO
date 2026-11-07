@@ -1213,7 +1213,13 @@ idf_component_register(SRCS ${SOURCES}
                         ${EXTRA_BT_REQS}
                         ${MAIN_PRIV_REQUIRES_EXTRA}
                     )
-target_link_libraries(${COMPONENT_LIB} PRIVATE idf::bt)
+target_link_libraries(${COMPONENT_LIB} PRIVATE idf::bt idf::mqtt)
+
+target_include_directories(${COMPONENT_LIB} PRIVATE
+    "/opt/esp/idf/components/bt/porting/include"
+    "/opt/esp/idf/components/bt/porting_btdm/controller/ble/include"
+    "/opt/esp/idf/components/bt/host/nimble/port/include"
+)
 
 if(NOT CMAKE_BUILD_EARLY_EXPANSION)
     target_compile_options(${COMPONENT_LIB} PRIVATE $<$<COMPILE_LANGUAGE:CXX>:-std=gnu++23>)
