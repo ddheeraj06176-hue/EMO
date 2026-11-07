@@ -1212,7 +1212,6 @@ idf_component_register(SRCS ${SOURCES}
                         xiaozhi-fonts
                         mqtt
                         bt
-                        esp_nimble_hci
                         ${EXTRA_BT_REQS}
                         ${MAIN_PRIV_REQUIRES_EXTRA}
                     )
