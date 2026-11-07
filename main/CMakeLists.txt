@@ -1219,7 +1219,6 @@ idf_component_register(SRCS ${SOURCES}
 target_include_directories(${COMPONENT_LIB} PRIVATE
     "$ENV{IDF_PATH}/components/bt/porting/include"
     "$ENV{IDF_PATH}/components/bt/host/nimble/port/include"
-    "$ENV{IDF_PATH}/components/bt/host/nimble/nimble/include"
     "$ENV{IDF_PATH}/components/bt/porting/npl/freertos/include"
 )
 
