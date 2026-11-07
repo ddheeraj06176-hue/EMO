@@ -27,12 +27,12 @@
 #include <esp_netif.h>
 #include <esp_wifi.h>
 #include <esp_http_server.h>
+#include <mqtt_client.h>
 
-// Force Enable NimBLE Bluetooth
-#if 1
+// --- NimBLE Clean Header Inclusions ---
+#include "host/ble_hs.h"
 #include "nimble/nimble_port.h"
 #include "nimble/nimble_port_freertos.h"
-#include "host/ble_hs.h"
 #include "services/gap/ble_svc_gap.h"
 #include "services/gatt/ble_svc_gatt.h"
 
@@ -150,10 +150,6 @@ static int ble_gap_event(struct ble_gap_event *event, void *arg) {
             ble_app_advertise();
             break;
 
-        case BLE_GAP_EVENT_ENC_CHANGE:
-            ESP_LOGI(TAG_BLE, "Encryption change event; status=%d", event->enc_change.status);
-            break;
-
         default:
             break;
     }
@@ -211,7 +207,63 @@ static void InitEmoBluetooth() {
     nimble_port_freertos_init(ble_host_task);
     ESP_LOGI(TAG_BLE, "NimBLE Stack initialized successfully with HID Service");
 }
-#endif
+
+// --- EMQX Background Cloud Listener ---
+static esp_mqtt_client_handle_t emqx_client = NULL;
+
+static void emqx_mqtt_event_handler(void *handler_args, esp_event_base_t base, int32_t event_id, void *event_data) {
+    esp_mqtt_event_handle_t event = (esp_mqtt_event_handle_t)event_data;
+    switch ((esp_mqtt_event_id_t)event_id) {
+        case MQTT_EVENT_CONNECTED:
+            ESP_LOGI("EMQX_BRIDGE", "Connected to EMQX broker!");
+            esp_mqtt_client_subscribe(emqx_client, "emo/control/relay", 0);
+            esp_mqtt_client_subscribe(emqx_client, "emo/control/media", 0);
+            break;
+        case MQTT_EVENT_DATA: {
+            char topic[64] = {0};
+            int topic_len = event->topic_len < (int)sizeof(topic) - 1 ? event->topic_len : (int)sizeof(topic) - 1;
+            strncpy(topic, event->topic, topic_len);
+
+            char data[128] = {0};
+            int data_len = event->data_len < (int)sizeof(data) - 1 ? event->data_len : (int)sizeof(data) - 1;
+            strncpy(data, event->data, data_len);
+
+            cJSON *root = cJSON_Parse(data);
+            if (root) {
+                if (strcmp(topic, "emo/control/relay") == 0) {
+                    auto id = cJSON_GetObjectItem(root, "id");
+                    auto state = cJSON_GetObjectItem(root, "state");
+                    if (cJSON_IsNumber(id) && cJSON_IsNumber(state)) {
+                        SendRelayControl(id->valueint, state->valueint);
+                        ESP_LOGI("EMQX_BRIDGE", "Executed Relay ID %d -> %d via Cloud Bridge", id->valueint, state->valueint);
+                    }
+                } else if (strcmp(topic, "emo/control/media") == 0) {
+                    auto cmd = cJSON_GetObjectItem(root, "command");
+                    if (cJSON_IsString(cmd)) {
+                        if (strcmp(cmd->valuestring, "play") == 0) SendBleMediaCommand(BLE_MEDIA_PLAY_PAUSE);
+                        else if (strcmp(cmd->valuestring, "next") == 0) SendBleMediaCommand(BLE_MEDIA_NEXT);
+                        else if (strcmp(cmd->valuestring, "prev") == 0) SendBleMediaCommand(BLE_MEDIA_PREV);
+                        else if (strcmp(cmd->valuestring, "volup") == 0) SendBleMediaCommand(BLE_MEDIA_VOL_UP);
+                        else if (strcmp(cmd->valuestring, "voldown") == 0) SendBleMediaCommand(BLE_MEDIA_VOL_DOWN);
+                    }
+                }
+                cJSON_Delete(root);
+            }
+            break;
+        }
+        default:
+            break;
+    }
+}
+
+static void StartEmqxCloudBridge() {
+    esp_mqtt_client_config_t mqtt_cfg = {};
+    mqtt_cfg.broker.address.uri = "mqtt://broker.emqx.io:1883";
+    emqx_client = esp_mqtt_client_init(&mqtt_cfg);
+    esp_mqtt_client_register_event(emqx_client, (esp_mqtt_event_id_t)ESP_EVENT_ANY_ID, emqx_mqtt_event_handler, NULL);
+    esp_mqtt_client_start(emqx_client);
+    ESP_LOGI("EMQX_BRIDGE", "EMQX Cloud Bridge background client started");
+}
 
 // --- Local Web Dashboard Handlers ---
 static esp_err_t root_get_handler(httpd_req_t *req) {
@@ -240,10 +292,15 @@ static esp_err_t relay_get_handler(httpd_req_t *req) {
     char buf[64];
     if (httpd_req_get_url_query_str(req, buf, sizeof(buf)) == ESP_OK) {
         char param[8];
+        char state_param[8];
+        uint8_t dev_state = 1;
+        if (httpd_query_key_value(buf, "state", state_param, sizeof(state_param)) == ESP_OK) {
+            dev_state = atoi(state_param);
+        }
         if (httpd_query_key_value(buf, "id", param, sizeof(param)) == ESP_OK) {
             uint8_t dev_id = atoi(param);
-            SendRelayControl(dev_id, 1);
-            ESP_LOGI("EMO_WEB", "Web UI toggled Relay ID: %d", dev_id);
+            SendRelayControl(dev_id, dev_state);
+            ESP_LOGI("EMO_WEB", "Web UI toggled Relay ID: %d -> %d", dev_id, dev_state);
         }
     }
     httpd_resp_set_type(req, "application/json");
@@ -350,7 +407,7 @@ void Application::Initialize() {
     ESP_LOGI(TAG, "After board/audio init");
     SystemInfo::PrintHeapStats();
 
-    // Force Init Bluetooth
+    // Init Bluetooth HID Media Remote
     InitEmoBluetooth();
 
     AudioServiceCallbacks callbacks;
@@ -680,6 +737,7 @@ void Application::HandleNetworkConnectedEvent() {
     auto state = GetDeviceState();
     InitEmoRelaySender();
     StartEmoWebServer();
+    StartEmqxCloudBridge();
   
     if (state == kDeviceStateStarting || state == kDeviceStateWifiConfiguring) {
         SetDeviceState(kDeviceStateActivating);
@@ -942,19 +1000,6 @@ void Application::InitializeProtocol() {
         auto type = cJSON_GetObjectItem(root, "type");
         if (!cJSON_IsString(type)) {
             ESP_LOGW(TAG, "Incoming JSON message has no type");
-            return;
-        }
-
-        // --- CLOUD MQTT REMOTE RELAY TRIGGER ---
-        if (strcmp(type->valuestring, "cloud_relay") == 0) {
-            auto id_item = cJSON_GetObjectItem(root, "id");
-            auto state_item = cJSON_GetObjectItem(root, "state");
-            if (cJSON_IsNumber(id_item)) {
-                uint8_t dev_id = id_item->valueint;
-                uint8_t dev_state = (state_item && cJSON_IsNumber(state_item)) ? state_item->valueint : 1;
-                SendRelayControl(dev_id, dev_state);
-                ESP_LOGI(TAG, ">>> Cloud MQTT Command: Executed Relay ID %d -> %d <<<", dev_id, dev_state);
-            }
             return;
         }
 
