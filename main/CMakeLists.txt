@@ -1223,6 +1223,7 @@ target_include_directories(${COMPONENT_LIB} PRIVATE
     "$ENV{IDF_PATH}/components/bt/host/nimble/nimble/include"
     "$ENV{IDF_PATH}/components/bt/host/nimble/nimble/nimble/include"
     "$ENV{IDF_PATH}/components/bt/host/nimble/nimble/nimble/transport/include"
+    "$ENV{IDF_PATH}/components/bt/host/nimble/nimble/nimble/host/util/include"
 )
 
 if(NOT CMAKE_BUILD_EARLY_EXPANSION)
