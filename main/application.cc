@@ -26,247 +26,6 @@
 #include <limits>
 #include <esp_netif.h>
 #include <esp_wifi.h>
-#include <esp_http_server.h>
-
-#if CONFIG_BT_NIMBLE_ENABLED
-#include "nimble/nimble_port.h"
-#include "nimble/nimble_port_freertos.h"
-#include "host/ble_hs.h"
-#include "services/gap/ble_svc_gap.h"
-#include "services/gatt/ble_svc_gatt.h"
-
-#define TAG_BLE "EMO_BLE"
-
-enum BleMediaKey {
-    BLE_MEDIA_PLAY_PAUSE,
-    BLE_MEDIA_NEXT,
-    BLE_MEDIA_PREV,
-    BLE_MEDIA_VOL_UP,
-    BLE_MEDIA_VOL_DOWN
-};
-
-static uint16_t hid_conn_handle = BLE_HS_CONN_HANDLE_NONE;
-static uint16_t hid_report_handle = 0;
-static bool ble_is_connected = false;
-
-// Standard HID Report Map for Android Media Keys
-static const uint8_t hid_report_map[] = {
-    0x05, 0x0C,        // Usage Page (Consumer)
-    0x09, 0x01,        // Usage (Consumer Control)
-    0xA1, 0x01,        // Collection (Application)
-    0x85, 0x01,        //   Report ID (1)
-    0x15, 0x00,        //   Logical Minimum (0)
-    0x25, 0x01,        //   Logical Maximum (1)
-    0x75, 0x01,        //   Report Size (1)
-    0x95, 0x05,        //   Report Count (5)
-    0x09, 0xCD,        //   Usage (Play/Pause)
-    0x09, 0xB5,        //   Usage (Scan Next Track)
-    0x09, 0xB6,        //   Usage (Scan Previous Track)
-    0x09, 0xE9,        //   Usage (Volume Increment)
-    0x09, 0xEA,        //   Usage (Volume Decrement)
-    0x81, 0x02,        //   Input (Data,Var,Abs)
-    0x75, 0x01,        //   Report Size (1)
-    0x95, 0x03,        //   Report Count (3) - Padding bits
-    0x81, 0x03,        //   Input (Cnst,Var,Abs)
-    0xC0               // End Collection
-};
-
-static int gatt_svr_chr_access_hid(uint16_t conn_handle, uint16_t attr_handle,
-                                   struct ble_gatt_access_ctxt *ctxt, void *arg) {
-    if (ctxt->op == BLE_GATT_ACCESS_OP_READ_CHR) {
-        os_mbuf_append(ctxt->om, hid_report_map, sizeof(hid_report_map));
-        return 0;
-    }
-    return 0;
-}
-
-static const struct ble_gatt_svc_def gatt_svr_svcs[] = {
-    {
-        .type = BLE_GATT_SVC_TYPE_PRIMARY,
-        .uuid = BLE_UUID16_DECLARE(0x1812), // HID Service
-        .characteristics = (struct ble_gatt_chr_def[]) {
-            {
-                .uuid = BLE_UUID16_DECLARE(0x2A4B), // Report Map
-                .access_cb = gatt_svr_chr_access_hid,
-                .flags = BLE_GATT_CHR_F_READ,
-            },
-            {
-                .uuid = BLE_UUID16_DECLARE(0x2A4D), // Report
-                .access_cb = gatt_svr_chr_access_hid,
-                .flags = BLE_GATT_CHR_F_READ | BLE_GATT_CHR_F_NOTIFY,
-                .val_handle = &hid_report_handle,
-            },
-            { 0 }
-        },
-    },
-    { 0 }
-};
-
-static int ble_gap_event(struct ble_gap_event *event, void *arg);
-
-static void ble_app_advertise(void) {
-    struct ble_gap_adv_params adv_params;
-    struct ble_hs_adv_fields fields;
-    memset(&fields, 0, sizeof(fields));
-
-    fields.flags = BLE_HS_ADV_F_DISC_GEN | BLE_HS_ADV_F_BREDR_UNSUP;
-    fields.tx_pwr_lvl_is_present = 1;
-    fields.tx_pwr_lvl = BLE_HS_ADV_TX_PWR_LVL_AUTO;
-
-    const char *device_name = "EMO Media Remote";
-    fields.name = (uint8_t *)device_name;
-    fields.name_len = strlen(device_name);
-    fields.name_is_complete = 1;
-    fields.appearance = 0x03C2;
-    fields.appearance_is_present = 1;
-
-    ble_gap_adv_set_fields(&fields);
-
-    memset(&adv_params, 0, sizeof(adv_params));
-    adv_params.conn_mode = BLE_GAP_CONN_MODE_UND;
-    adv_params.disc_mode = BLE_GAP_DISC_MODE_GEN;
-    ble_gap_adv_start(BLE_OWN_ADDR_PUBLIC, NULL, BLE_HS_FOREVER, &adv_params, ble_gap_event, NULL);
-
-    ESP_LOGI(TAG_BLE, ">>> BLE Broadcasting live as: %s <<<", device_name);
-}
-
-static int ble_gap_event(struct ble_gap_event *event, void *arg) {
-    switch (event->type) {
-        case BLE_GAP_EVENT_CONNECT:
-            if (event->connect.status == 0) {
-                hid_conn_handle = event->connect.conn_handle;
-                ble_is_connected = true;
-                ESP_LOGI(TAG_BLE, ">>> Phone Connected Successfully! Handle: %d <<<", hid_conn_handle);
-            } else {
-                ble_app_advertise();
-            }
-            break;
-
-        case BLE_GAP_EVENT_DISCONNECT:
-            ESP_LOGI(TAG_BLE, ">>> Phone Disconnected! Restarting Advertising... <<<");
-            hid_conn_handle = BLE_HS_CONN_HANDLE_NONE;
-            ble_is_connected = false;
-            ble_app_advertise();
-            break;
-
-        case BLE_GAP_EVENT_ENC_CHANGE:
-            ESP_LOGI(TAG_BLE, "Encryption change event; status=%d", event->enc_change.status);
-            break;
-
-        default:
-            break;
-    }
-    return 0;
-}
-
-static void SendBleMediaCommand(BleMediaKey key) {
-    if (!ble_is_connected || hid_conn_handle == BLE_HS_CONN_HANDLE_NONE) {
-        ESP_LOGW(TAG_BLE, "Phone not connected via Bluetooth yet!");
-        return;
-    }
-
-    uint8_t report = 0;
-    switch (key) {
-        case BLE_MEDIA_PLAY_PAUSE: report = 0x01; break;
-        case BLE_MEDIA_NEXT:       report = 0x02; break;
-        case BLE_MEDIA_PREV:       report = 0x04; break;
-        case BLE_MEDIA_VOL_UP:     report = 0x08; break;
-        case BLE_MEDIA_VOL_DOWN:   report = 0x10; break;
-    }
-
-    struct os_mbuf *om = ble_hs_mbuf_from_flat(&report, sizeof(report));
-    if (om) {
-        ble_gattc_notify_custom(hid_conn_handle, hid_report_handle, om);
-        vTaskDelay(pdMS_TO_TICKS(50));
-        report = 0;
-        om = ble_hs_mbuf_from_flat(&report, sizeof(report));
-        if (om) {
-            ble_gattc_notify_custom(hid_conn_handle, hid_report_handle, om);
-        }
-    }
-}
-
-static void ble_host_task(void *param) {
-    nimble_port_run();
-    nimble_port_freertos_deinit();
-}
-
-static void InitEmoBluetooth() {
-    nimble_port_init();
-
-    ble_hs_cfg.sm_io_cap = BLE_SM_IO_CAP_NO_IO;
-    ble_hs_cfg.sm_bonding = 1;
-    ble_hs_cfg.sm_mitm = 0;
-    ble_hs_cfg.sm_sc = 1;
-
-    ble_svc_gap_device_name_set("EMO Media Remote");
-    ble_svc_gap_init();
-    ble_svc_gatt_init();
-
-    ble_gatts_count_cfg(gatt_svr_svcs);
-    ble_gatts_add_svcs(gatt_svr_svcs);
-
-    ble_hs_cfg.sync_cb = ble_app_advertise;
-    nimble_port_freertos_init(ble_host_task);
-    ESP_LOGI(TAG_BLE, "NimBLE Stack initialized successfully with HID Service");
-}
-#else
-static void SendBleMediaCommand(int key) {}
-static void InitEmoBluetooth() {}
-#endif
-
-// --- Local Web Dashboard Handlers ---
-static esp_err_t root_get_handler(httpd_req_t *req) {
-    const char* resp = 
-        "<!DOCTYPE html><html><head><meta name='viewport' content='width=device-width, initial-scale=1'>"
-        "<title>EMO Controller</title>"
-        "<style>body{font-family:sans-serif;background:#121212;color:#fff;text-align:center;padding:20px;}"
-        "button{background:#00bcd4;border:none;color:#fff;padding:12px 20px;margin:8px;font-size:16px;border-radius:8px;font-weight:bold;cursor:pointer;}"
-        ".card{background:#1e1e1e;border-radius:12px;padding:16px;margin:12px auto;max-width:320px;}"
-        "</style></head>"
-        "<body><h2>EMO Hub</h2>"
-        "<div class='card'><h3>Smart Relays</h3>"
-        "<button onclick=\"fetch('/relay?id=1&state=1')\">Light 1</button>"
-        "<button onclick=\"fetch('/relay?id=2&state=1')\">Light 2</button><br>"
-        "<button onclick=\"fetch('/relay?id=3&state=1')\">Fan</button>"
-        "<button onclick=\"fetch('/relay?id=4&state=1')\">TV</button></div>"
-        "<div class='card'><h3>Status</h3><p style='color:#4caf50;'>Online (Zero-App Local Server)</p></div>"
-        "</body></html>";
-    httpd_resp_set_type(req, "text/html");
-    return httpd_resp_send(req, resp, HTTPD_RESP_USE_STRLEN);
-}
-
-static esp_err_t relay_get_handler(httpd_req_t *req) {
-    char buf[64];
-    if (httpd_req_get_url_query_str(req, buf, sizeof(buf)) == ESP_OK) {
-        char param[8];
-        if (httpd_query_key_value(buf, "id", param, sizeof(param)) == ESP_OK) {
-            uint8_t dev_id = atoi(param);
-            SendRelayControl(dev_id, 1);
-            ESP_LOGI("EMO_WEB", "Web UI toggled Relay ID: %d", dev_id);
-        }
-    }
-    httpd_resp_set_type(req, "application/json");
-    httpd_resp_sendstr(req, "{\"status\":\"ok\"}");
-    return ESP_OK;
-}
-
-static httpd_handle_t StartEmoWebServer() {
-    httpd_config_t config = HTTPD_DEFAULT_CONFIG();
-    config.server_port = 80;
-    httpd_handle_t server = NULL;
-
-    if (httpd_start(&server, &config) == ESP_OK) {
-        httpd_uri_t uri_root = {.uri = "/", .method = HTTP_GET, .handler = root_get_handler, .user_ctx = NULL};
-        httpd_register_uri_handler(server, &uri_root);
-
-        httpd_uri_t uri_relay = {.uri = "/relay", .method = HTTP_GET, .handler = relay_get_handler, .user_ctx = NULL};
-        httpd_register_uri_handler(server, &uri_relay);
-
-        ESP_LOGI("EMO_WEB", "Local Web Dashboard running on port 80");
-    }
-    return server;
-}
 
 #define TAG "Application"
 
@@ -315,22 +74,20 @@ void Application::Initialize() {
     auto& board = Board::GetInstance();
     SetDeviceState(kDeviceStateStarting);
 
+    // Setup the display
     auto display = board.GetDisplay();
     display->SetupUI();
     RunEmoBootAnimation(display);
     EmoMoodEngine::GetInstance().Start(display);
     StartEmoTouchService(display);
   
+    // Setup the audio service
     auto codec = board.GetAudioCodec();
     audio_service_.Initialize(codec);
     audio_service_.Start();
     ServoController::GetInstance().Initialize();
     ESP_LOGI(TAG, "After board/audio init");
     SystemInfo::PrintHeapStats();
-
-#if CONFIG_BT_NIMBLE_ENABLED
-    InitEmoBluetooth();
-#endif
 
     AudioServiceCallbacks callbacks;
     callbacks.on_send_queue_available = [this]() {
@@ -350,16 +107,20 @@ void Application::Initialize() {
     };
     audio_service_.SetCallbacks(callbacks);
 
+    // Add state change listeners
     state_machine_.AddStateChangeListener([this](DeviceState old_state, DeviceState new_state) {
         xEventGroupSetBits(event_group_, MAIN_EVENT_STATE_CHANGED);
     });
 
+    // Start the clock timer to update the status bar
     esp_timer_start_periodic(clock_timer_handle_, 1000000);
 
+    // Add MCP tools
     auto& mcp_server = McpServer::GetInstance();
     mcp_server.AddCommonTools();
     mcp_server.AddUserOnlyTools();
 
+    // Math & Physics Equation Display Tool
     mcp_server.AddTool("show_math_solution",
         "Display step-by-step math or physics equation solutions on the screen",
         PropertyList({
@@ -397,50 +158,39 @@ void Application::Initialize() {
             return "Solution displayed on screen";
         }); 
 
-    mcp_server.AddTool("control_light1", "Turn Light 1 on or off", PropertyList(),
-        [](const PropertyList& properties) { SendRelayControl(DEVICE_LIGHT1, 1); return "Light 1 switched"; });
-
-    mcp_server.AddTool("control_light2", "Turn Light 2 on or off", PropertyList(),
-        [](const PropertyList& properties) { SendRelayControl(DEVICE_LIGHT2, 1); return "Light 2 switched"; });
-
-    mcp_server.AddTool("control_fan", "Turn Fan on or off", PropertyList(),
-        [](const PropertyList& properties) { SendRelayControl(DEVICE_FAN, 1); return "Fan switched"; });
-
-    mcp_server.AddTool("control_tv", "Turn TV on or off", PropertyList(),
-        [](const PropertyList& properties) { SendRelayControl(DEVICE_TV, 1); return "TV switched"; });
-
-#if CONFIG_BT_NIMBLE_ENABLED
-    mcp_server.AddTool("control_phone_media", "Control phone music playback (play, pause, next, prev, volup, voldown)",
-        PropertyList({
-            Property("command", kPropertyTypeString)
-        }),
-        [](const PropertyList& properties) -> ToolResult {
-            std::string cmd = properties["command"].value<std::string>();
-            if (cmd == "play" || cmd == "pause" || cmd == "toggle") {
-                SendBleMediaCommand(BLE_MEDIA_PLAY_PAUSE);
-            } else if (cmd == "next") {
-                SendBleMediaCommand(BLE_MEDIA_NEXT);
-            } else if (cmd == "prev") {
-                SendBleMediaCommand(BLE_MEDIA_PREV);
-            } else if (cmd == "volup") {
-                SendBleMediaCommand(BLE_MEDIA_VOL_UP);
-            } else if (cmd == "voldown") {
-                SendBleMediaCommand(BLE_MEDIA_VOL_DOWN);
-            }
-            return "Phone media command processed";
-        });
-
-    mcp_server.AddTool("get_bluetooth_status", "Check if phone is connected via Bluetooth remote",
+    // 1. Light 1
+    mcp_server.AddTool("control_light1", "Turn Light 1 on or off",
         PropertyList(),
-        [](const PropertyList& properties) -> ToolResult {
-            if (ble_is_connected) {
-                return "Phone is connected via Bluetooth Media Remote";
-            } else {
-                return "Bluetooth is broadcasting as 'EMO Media Remote', but phone is not paired yet. Please pair from phone settings.";
-            }
+        [](const PropertyList& properties) {
+            SendRelayControl(DEVICE_LIGHT1, 1);
+            return "Light 1 switched";
         });
-#endif
-  
+
+    // 2. Light 2
+    mcp_server.AddTool("control_light2", "Turn Light 2 on or off",
+        PropertyList(),
+        [](const PropertyList& properties) {
+            SendRelayControl(DEVICE_LIGHT2, 1);
+            return "Light 2 switched";
+        });
+
+    // 3. Fan
+    mcp_server.AddTool("control_fan", "Turn Fan on or off",
+        PropertyList(),
+        [](const PropertyList& properties) {
+            SendRelayControl(DEVICE_FAN, 1);
+            return "Fan switched";
+        });
+
+    // 4. TV
+    mcp_server.AddTool("control_tv", "Turn TV on or off",
+        PropertyList(),
+        [](const PropertyList& properties) {
+            SendRelayControl(DEVICE_TV, 1);
+            return "TV switched";
+        });
+
+    // 5. Phone Flashlight Control Tool
     mcp_server.AddTool("control_phone_torch", "Turn phone flashlight/torch on or off",
         PropertyList({
             Property("action", kPropertyTypeString)
@@ -453,6 +203,7 @@ void Application::Initialize() {
             return "Phone torch " + action + " sent";
         });
 
+    // 6. Phone Companion Action Query (Gold rate, cement price, general query)
     mcp_server.AddTool("query_phone_action", "Forward general internet or device queries to companion phone",
         PropertyList({
             Property("query", kPropertyTypeString)
@@ -464,6 +215,7 @@ void Application::Initialize() {
             return "Query sent to phone companion";
         });
 
+    // Set network event callback for UI updates and network state handling
     board.SetNetworkEventCallback([this](NetworkEvent event, const std::string& data) {
         auto display = Board::GetInstance().GetDisplay();
 
@@ -503,7 +255,10 @@ void Application::Initialize() {
         }
     });
 
+    // Start network asynchronously
     board.StartNetwork();
+
+    // Update the status bar immediately to show the network state
     display->UpdateStatusBar(true);
 }
 
@@ -636,8 +391,7 @@ void Application::HandleNetworkConnectedEvent() {
 
     auto state = GetDeviceState();
     InitEmoRelaySender();
-    StartEmoWebServer();
-  
+   
     if (state == kDeviceStateStarting || state == kDeviceStateWifiConfiguring) {
         SetDeviceState(kDeviceStateActivating);
         if (activation_task_handle_ != nullptr) {
