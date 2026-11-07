@@ -1182,7 +1182,6 @@ if(CONFIG_BOARD_TYPE_ESP32_P4_FUNCTION_EV_BOARD)
     )
 endif()
 
-# Single standard registration
 idf_component_register(SRCS ${SOURCES}
                     EMBED_FILES ${LANG_SOUNDS} ${COMMON_SOUNDS}
                     INCLUDE_DIRS ${INCLUDE_DIRS}
@@ -1211,7 +1210,8 @@ idf_component_register(SRCS ${SOURCES}
                         fatfs
                         xiaozhi-fonts
                         mqtt
-                        ${EXTRA_BT_REQS}
+                        bt
+                        esp_nimble_hci
                         ${MAIN_PRIV_REQUIRES_EXTRA}
                     )
 
