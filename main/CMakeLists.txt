@@ -1228,6 +1228,7 @@ target_include_directories(${COMPONENT_LIB} PRIVATE
     "$ENV{IDF_PATH}/components/bt/porting/npl/freertos/include"
 )
 
+
 if(NOT CMAKE_BUILD_EARLY_EXPANSION)
     target_compile_options(${COMPONENT_LIB} PRIVATE $<$<COMPILE_LANGUAGE:CXX>:-std=gnu++23>)
 endif()
@@ -1535,3 +1536,16 @@ if ("${size}" AND "${offset}")
 else()
     message(STATUS "Assets partition not found, using v1 partition table")
 endif()
+
+
+
+
+
+
+
+
+
+
+
+
+
