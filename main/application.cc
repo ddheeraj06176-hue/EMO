@@ -27,15 +27,13 @@
 #include <esp_netif.h>
 #include <esp_wifi.h>
 #include <esp_http_server.h>
-#include <mqtt_client.h>
 
-// --- Clean NimBLE Headers in Correct IDF Sequence ---
+#if CONFIG_BT_NIMBLE_ENABLED
 #include "nimble/nimble_port.h"
 #include "nimble/nimble_port_freertos.h"
 #include "host/ble_hs.h"
-#include "host/util/util.h"
 #include "services/gap/ble_svc_gap.h"
-#include "services/gatt/ble_svc_gatt.h" 
+#include "services/gatt/ble_svc_gatt.h"
 
 #define TAG_BLE "EMO_BLE"
 
@@ -82,23 +80,18 @@ static int gatt_svr_chr_access_hid(uint16_t conn_handle, uint16_t attr_handle,
     return 0;
 }
 
-// Static UUID objects to avoid taking address of rvalues in C++23
-static const ble_uuid16_t g_uuid_hid = BLE_UUID16_INIT(0x1812);
-static const ble_uuid16_t g_uuid_report_map = BLE_UUID16_INIT(0x2A4B);
-static const ble_uuid16_t g_uuid_report = BLE_UUID16_INIT(0x2A4D);
-
 static const struct ble_gatt_svc_def gatt_svr_svcs[] = {
     {
         .type = BLE_GATT_SVC_TYPE_PRIMARY,
-        .uuid = (const ble_uuid_t *)&g_uuid_hid, // HID Service
+        .uuid = BLE_UUID16_DECLARE(0x1812), // HID Service
         .characteristics = (struct ble_gatt_chr_def[]) {
             {
-                .uuid = (const ble_uuid_t *)&g_uuid_report_map, // Report Map
+                .uuid = BLE_UUID16_DECLARE(0x2A4B), // Report Map
                 .access_cb = gatt_svr_chr_access_hid,
                 .flags = BLE_GATT_CHR_F_READ,
             },
             {
-                .uuid = (const ble_uuid_t *)&g_uuid_report, // Report
+                .uuid = BLE_UUID16_DECLARE(0x2A4D), // Report
                 .access_cb = gatt_svr_chr_access_hid,
                 .flags = BLE_GATT_CHR_F_READ | BLE_GATT_CHR_F_NOTIFY,
                 .val_handle = &hid_report_handle,
@@ -154,6 +147,10 @@ static int ble_gap_event(struct ble_gap_event *event, void *arg) {
             hid_conn_handle = BLE_HS_CONN_HANDLE_NONE;
             ble_is_connected = false;
             ble_app_advertise();
+            break;
+
+        case BLE_GAP_EVENT_ENC_CHANGE:
+            ESP_LOGI(TAG_BLE, "Encryption change event; status=%d", event->enc_change.status);
             break;
 
         default:
@@ -213,67 +210,13 @@ static void InitEmoBluetooth() {
     nimble_port_freertos_init(ble_host_task);
     ESP_LOGI(TAG_BLE, "NimBLE Stack initialized successfully with HID Service");
 }
-
-// --- EMQX Background Cloud Listener ---
-static esp_mqtt_client_handle_t emqx_client = NULL;
-
-static void emqx_mqtt_event_handler(void *handler_args, esp_event_base_t base, int32_t event_id, void *event_data) {
-    esp_mqtt_event_handle_t event = (esp_mqtt_event_handle_t)event_data;
-    switch ((esp_mqtt_event_id_t)event_id) {
-        case MQTT_EVENT_CONNECTED:
-            ESP_LOGI("EMQX_BRIDGE", "Connected to EMQX broker!");
-            esp_mqtt_client_subscribe(emqx_client, "emo/control/relay", 0);
-            esp_mqtt_client_subscribe(emqx_client, "emo/control/media", 0);
-            break;
-        case MQTT_EVENT_DATA: {
-            char topic[64] = {0};
-            int topic_len = event->topic_len < (int)sizeof(topic) - 1 ? event->topic_len : (int)sizeof(topic) - 1;
-            strncpy(topic, event->topic, topic_len);
-
-            char data[128] = {0};
-            int data_len = event->data_len < (int)sizeof(data) - 1 ? event->data_len : (int)sizeof(data) - 1;
-            strncpy(data, event->data, data_len);
-
-            cJSON *root = cJSON_Parse(data);
-            if (root) {
-                if (strcmp(topic, "emo/control/relay") == 0) {
-                    auto id = cJSON_GetObjectItem(root, "id");
-                    auto state = cJSON_GetObjectItem(root, "state");
-                    if (cJSON_IsNumber(id) && cJSON_IsNumber(state)) {
-                        SendRelayControl(id->valueint, state->valueint);
-                        ESP_LOGI("EMQX_BRIDGE", "Executed Relay ID %d -> %d via Cloud Bridge", id->valueint, state->valueint);
-                    }
-                } else if (strcmp(topic, "emo/control/media") == 0) {
-                    auto cmd = cJSON_GetObjectItem(root, "command");
-                    if (cJSON_IsString(cmd)) {
-                        if (strcmp(cmd->valuestring, "play") == 0) SendBleMediaCommand(BLE_MEDIA_PLAY_PAUSE);
-                        else if (strcmp(cmd->valuestring, "next") == 0) SendBleMediaCommand(BLE_MEDIA_NEXT);
-                        else if (strcmp(cmd->valuestring, "prev") == 0) SendBleMediaCommand(BLE_MEDIA_PREV);
-                        else if (strcmp(cmd->valuestring, "volup") == 0) SendBleMediaCommand(BLE_MEDIA_VOL_UP);
-                        else if (strcmp(cmd->valuestring, "voldown") == 0) SendBleMediaCommand(BLE_MEDIA_VOL_DOWN);
-                    }
-                }
-                cJSON_Delete(root);
-            }
-            break;
-        }
-        default:
-            break;
-    }
-}
-
-static void StartEmqxCloudBridge() {
-    esp_mqtt_client_config_t mqtt_cfg = {};
-    mqtt_cfg.broker.address.uri = "mqtt://broker.emqx.io:1883";
-    emqx_client = esp_mqtt_client_init(&mqtt_cfg);
-    esp_mqtt_client_register_event(emqx_client, (esp_mqtt_event_id_t)ESP_EVENT_ANY_ID, emqx_mqtt_event_handler, NULL);
-    esp_mqtt_client_start(emqx_client);
-    ESP_LOGI("EMQX_BRIDGE", "EMQX Cloud Bridge background client started");
-}
+#else
+static void SendBleMediaCommand(int key) {}
+static void InitEmoBluetooth() {}
+#endif
 
 // --- Local Web Dashboard Handlers ---
 static esp_err_t root_get_handler(httpd_req_t *req) {
-    httpd_resp_set_hdr(req, "Access-Control-Allow-Origin", "*");
     const char* resp = 
         "<!DOCTYPE html><html><head><meta name='viewport' content='width=device-width, initial-scale=1'>"
         "<title>EMO Controller</title>"
@@ -294,38 +237,13 @@ static esp_err_t root_get_handler(httpd_req_t *req) {
 }
 
 static esp_err_t relay_get_handler(httpd_req_t *req) {
-    httpd_resp_set_hdr(req, "Access-Control-Allow-Origin", "*");
     char buf[64];
     if (httpd_req_get_url_query_str(req, buf, sizeof(buf)) == ESP_OK) {
         char param[8];
-        char state_param[8];
-        uint8_t dev_state = 1;
-        if (httpd_query_key_value(buf, "state", state_param, sizeof(state_param)) == ESP_OK) {
-            dev_state = atoi(state_param);
-        }
         if (httpd_query_key_value(buf, "id", param, sizeof(param)) == ESP_OK) {
             uint8_t dev_id = atoi(param);
-            SendRelayControl(dev_id, dev_state);
-            ESP_LOGI("EMO_WEB", "Web UI toggled Relay ID: %d -> %d", dev_id, dev_state);
-        }
-    }
-    httpd_resp_set_type(req, "application/json");
-    httpd_resp_sendstr(req, "{\"status\":\"ok\"}");
-    return ESP_OK;
-}
-
-static esp_err_t media_get_handler(httpd_req_t *req) {
-    httpd_resp_set_hdr(req, "Access-Control-Allow-Origin", "*");
-    char buf[64];
-    if (httpd_req_get_url_query_str(req, buf, sizeof(buf)) == ESP_OK) {
-        char cmd[16];
-        if (httpd_query_key_value(buf, "cmd", cmd, sizeof(cmd)) == ESP_OK) {
-            if (strcmp(cmd, "play") == 0) SendBleMediaCommand(BLE_MEDIA_PLAY_PAUSE);
-            else if (strcmp(cmd, "next") == 0) SendBleMediaCommand(BLE_MEDIA_NEXT);
-            else if (strcmp(cmd, "prev") == 0) SendBleMediaCommand(BLE_MEDIA_PREV);
-            else if (strcmp(cmd, "volup") == 0) SendBleMediaCommand(BLE_MEDIA_VOL_UP);
-            else if (strcmp(cmd, "voldown") == 0) SendBleMediaCommand(BLE_MEDIA_VOL_DOWN);
-            ESP_LOGI("EMO_WEB", "Web UI triggered Media Command: %s", cmd);
+            SendRelayControl(dev_id, 1);
+            ESP_LOGI("EMO_WEB", "Web UI toggled Relay ID: %d", dev_id);
         }
     }
     httpd_resp_set_type(req, "application/json");
@@ -345,10 +263,7 @@ static httpd_handle_t StartEmoWebServer() {
         httpd_uri_t uri_relay = {.uri = "/relay", .method = HTTP_GET, .handler = relay_get_handler, .user_ctx = NULL};
         httpd_register_uri_handler(server, &uri_relay);
 
-        httpd_uri_t uri_media = {.uri = "/media", .method = HTTP_GET, .handler = media_get_handler, .user_ctx = NULL};
-        httpd_register_uri_handler(server, &uri_media);
-
-        ESP_LOGI("EMO_WEB", "Local Web Dashboard running on port 80 with Relay & Media handlers");
+        ESP_LOGI("EMO_WEB", "Local Web Dashboard running on port 80");
     }
     return server;
 }
@@ -369,11 +284,11 @@ Application::Application() : notify_player_(audio_service_) {
 #endif
 
     esp_timer_create_args_t clock_timer_args = {.callback =
-                                                [](void* arg) {
-                                                    Application* app = (Application*)arg;
-                                                    xEventGroupSetBits(app->event_group_,
-                                                                       MAIN_EVENT_CLOCK_TICK);
-                                                },
+                                                    [](void* arg) {
+                                                        Application* app = (Application*)arg;
+                                                        xEventGroupSetBits(app->event_group_,
+                                                                           MAIN_EVENT_CLOCK_TICK);
+                                                    },
                                                 .arg = this,
                                                 .dispatch_method = ESP_TIMER_TASK,
                                                 .name = "clock_timer",
@@ -413,8 +328,9 @@ void Application::Initialize() {
     ESP_LOGI(TAG, "After board/audio init");
     SystemInfo::PrintHeapStats();
 
-    // Init Bluetooth HID Media Remote
+#if CONFIG_BT_NIMBLE_ENABLED
     InitEmoBluetooth();
+#endif
 
     AudioServiceCallbacks callbacks;
     callbacks.on_send_queue_available = [this]() {
@@ -493,28 +409,7 @@ void Application::Initialize() {
     mcp_server.AddTool("control_tv", "Turn TV on or off", PropertyList(),
         [](const PropertyList& properties) { SendRelayControl(DEVICE_TV, 1); return "TV switched"; });
 
-    mcp_server.AddTool("get_live_gold_price", "Fetch current live gold rate in India (24K and 22K per 10 grams in INR)",
-        PropertyList(),
-        [this](const PropertyList& properties) -> ToolResult {
-            ESP_LOGI(TAG, "Fetching live gold price for India...");
-            auto display = Board::GetInstance().GetDisplay();
-            if (display) {
-                display->ShowNotification("Gold 24K: ₹78,500 | 22K: ₹72,000", 8000);
-            }
-            return "Current gold price in India: 24 Karat is approximately 78,500 INR per 10 grams, and 22 Karat is 72,000 INR per 10 grams.";
-        });
-
-    mcp_server.AddTool("get_realtime_market_info", "Get real-time rates, petrol price, or live news for India",
-        PropertyList({
-            Property("query_type", kPropertyTypeString)
-        }),
-        [this](const PropertyList& properties) -> ToolResult {
-            std::string q = properties["query_type"].value<std::string>();
-            ESP_LOGI(TAG, "Realtime query requested: %s", q.c_str());
-            SendMcpMessage("{\"type\":\"realtime_query\",\"item\":\"" + q + "\"}");
-            return "Fetching latest live Indian market data for " + q;
-        });
-
+#if CONFIG_BT_NIMBLE_ENABLED
     mcp_server.AddTool("control_phone_media", "Control phone music playback (play, pause, next, prev, volup, voldown)",
         PropertyList({
             Property("command", kPropertyTypeString)
@@ -544,6 +439,7 @@ void Application::Initialize() {
                 return "Bluetooth is broadcasting as 'EMO Media Remote', but phone is not paired yet. Please pair from phone settings.";
             }
         });
+#endif
   
     mcp_server.AddTool("control_phone_torch", "Turn phone flashlight/torch on or off",
         PropertyList({
@@ -726,8 +622,6 @@ void Application::Run() {
 void Application::HandleNetworkConnectedEvent() {
     ESP_LOGI(TAG, "Network connected");
 
-    Board::GetInstance().SetPowerSaveLevel(PowerSaveLevel::PERFORMANCE);
-
     esp_netif_t* netif = esp_netif_get_handle_from_ifkey("WIFI_STA_DEF");
     if (netif) {
         esp_netif_dns_info_t dns_info = {};
@@ -743,7 +637,6 @@ void Application::HandleNetworkConnectedEvent() {
     auto state = GetDeviceState();
     InitEmoRelaySender();
     StartEmoWebServer();
-    StartEmqxCloudBridge();
   
     if (state == kDeviceStateStarting || state == kDeviceStateWifiConfiguring) {
         SetDeviceState(kDeviceStateActivating);
@@ -797,7 +690,7 @@ void Application::HandleActivationDoneEvent() {
   
     ota_.reset();
     auto& board = Board::GetInstance();
-    board.SetPowerSaveLevel(PowerSaveLevel::PERFORMANCE);
+    board.SetPowerSaveLevel(PowerSaveLevel::LOW_POWER);
 
     if (!has_error) {
         Schedule([this]() {
@@ -853,7 +746,7 @@ void Application::CheckAssetsVersion() {
                 });
             });
 
-        board.SetPowerSaveLevel(PowerSaveLevel::PERFORMANCE);
+        board.SetPowerSaveLevel(PowerSaveLevel::LOW_POWER);
         vTaskDelay(pdMS_TO_TICKS(1000));
 
         if (!success) {
@@ -967,10 +860,7 @@ void Application::InitializeProtocol() {
         protocol_ = std::make_unique<MqttProtocol>();
     }
 
-    protocol_->OnConnected([this]() { 
-        DismissAlert(); 
-        ESP_LOGI(TAG, "Connected to MQTT Server successfully");
-    });
+    protocol_->OnConnected([this]() { DismissAlert(); });
 
     protocol_->OnNetworkError([this](const std::string& message) {
         last_error_message_ = message;
@@ -994,7 +884,7 @@ void Application::InitializeProtocol() {
     });
 
     protocol_->OnAudioChannelClosed([this, &board]() {
-        board.SetPowerSaveLevel(PowerSaveLevel::PERFORMANCE);
+        board.SetPowerSaveLevel(PowerSaveLevel::LOW_POWER);
         Schedule([this]() {
             auto display = Board::GetInstance().GetDisplay();
             display->SetChatMessage("system", "");
@@ -1008,7 +898,6 @@ void Application::InitializeProtocol() {
             ESP_LOGW(TAG, "Incoming JSON message has no type");
             return;
         }
-
         if (strcmp(type->valuestring, "notify") == 0) {
             auto audio_url = cJSON_GetObjectItem(root, "audio_url");
             if (!cJSON_IsString(audio_url) || audio_url->valuestring[0] == '\0') {
@@ -1532,7 +1421,7 @@ void Application::StartNotification(std::string audio_url, std::vector<NotifySub
     }
 
     if (!SetDeviceState(kDeviceStateNotifying)) {
-        board.SetPowerSaveLevel(PowerSaveLevel::PERFORMANCE);
+        board.SetPowerSaveLevel(PowerSaveLevel::LOW_POWER);
         return;
     }
 
@@ -1567,7 +1456,7 @@ void Application::StopNotification() {
     audio_service_.ResetDecoder();
     auto& board = Board::GetInstance();
     board.GetDisplay()->SetChatMessage("assistant", "");
-    board.SetPowerSaveLevel(PowerSaveLevel::PERFORMANCE);
+    board.SetPowerSaveLevel(PowerSaveLevel::LOW_POWER);
     if (GetDeviceState() == kDeviceStateNotifying) {
         SetDeviceState(kDeviceStateIdle);
     }
@@ -1613,7 +1502,6 @@ void Application::Reboot() {
         StopNotification();
     }
     if (protocol_ && protocol_->IsAudioChannelOpened()) {
-        ESP_LOGI(TAG, "Closing audio channel before reboot");
         protocol_->CloseAudioChannel();
     }
     protocol_.reset();
@@ -1665,7 +1553,7 @@ bool Application::UpgradeFirmware(const std::string& url, const std::string& ver
         ESP_LOGE(TAG,
                  "Firmware upgrade failed, restarting audio service and continuing operation...");
         audio_service_.Start();
-        board.SetPowerSaveLevel(PowerSaveLevel::PERFORMANCE);
+        board.SetPowerSaveLevel(PowerSaveLevel::LOW_POWER);
         Alert(Lang::Strings::ERROR, Lang::Strings::UPGRADE_FAILED, "cancel",
               Lang::Sounds::OGG_EXCLAMATION);
         vTaskDelay(pdMS_TO_TICKS(3000));
