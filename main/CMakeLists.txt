@@ -70,6 +70,7 @@ set(INCLUDE_DIRS "." "display" "display/lvgl_display" "display/lvgl_display/jpg"
 set(EXTRA_BT_REQS "")
 if(CONFIG_IDF_TARGET_ESP32 OR CONFIG_IDF_TARGET_ESP32S3)
     list(APPEND INCLUDE_DIRS
+        "$ENV{IDF_PATH}/components/bt/porting/include"
         "$ENV{IDF_PATH}/components/bt/host/nimble/port/include"
         "$ENV{IDF_PATH}/components/bt/host/nimble/nimble/porting/nimble/include"
         "$ENV{IDF_PATH}/components/bt/host/nimble/nimble/nimble/include"
@@ -1212,6 +1213,7 @@ idf_component_register(SRCS ${SOURCES}
                         ${EXTRA_BT_REQS}
                         ${MAIN_PRIV_REQUIRES_EXTRA}
                     )
+target_link_libraries(${COMPONENT_LIB} PRIVATE idf::bt)
 
 if(NOT CMAKE_BUILD_EARLY_EXPANSION)
     target_compile_options(${COMPONENT_LIB} PRIVATE $<$<COMPILE_LANGUAGE:CXX>:-std=gnu++23>)
