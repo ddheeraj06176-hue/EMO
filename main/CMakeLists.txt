@@ -43,6 +43,32 @@ set(SOURCES "audio/audio_codec.cc"
             "main.cc"
             )
 
+set(EXTRA_BT_INCLUDES "")
+set(EXTRA_BT_REQS "")
+
+# Sirf ESP32 aur ESP32-S3 par Bluetooth headers aur component load honge
+if(CONFIG_IDF_TARGET_ESP32 OR CONFIG_IDF_TARGET_ESP32S3)
+    if(CONFIG_BT_ENABLED)
+        set(EXTRA_BT_INCLUDES
+            "$ENV{IDF_PATH}/components/bt/host/nimble/nimble/porting/nimble/include"
+            "$ENV{IDF_PATH}/components/bt/host/nimble/nimble/nimble/include"
+            "$ENV{IDF_PATH}/components/bt/host/nimble/nimble/nimble/host/include"
+            "$ENV{IDF_PATH}/components/bt/host/nimble/nimble/nimble/host/services/gap/include"
+            "$ENV{IDF_PATH}/components/bt/host/nimble/nimble/nimble/host/services/gatt/include"
+            "$ENV{IDF_PATH}/components/bt/porting/npl/freertos/include"
+            "$ENV{IDF_PATH}/components/bt/host/nimble/nimble/porting/npl/freertos/include"
+        )
+        set(EXTRA_BT_REQS bt)
+    endif()
+endif()
+
+idf_component_register(
+    SRCS ${SOURCES}
+    INCLUDE_DIRS "." "display" "display/lvgl_display" "display/lvgl_display/jpg" "audio" "audio/demuxer" "protocols" ${EXTRA_BT_INCLUDES}
+    REQUIRES ${REQUIRES}
+    PRIV_REQUIRES ${PRIV_REQUIRES} ${EXTRA_BT_REQS}
+)
+
 # Add board common files
 list(APPEND SOURCES
     "boards/common/board.cc"
@@ -62,23 +88,14 @@ list(APPEND SOURCES
     "boards/common/sy6970.cc"
     "boards/common/system_reset.cc"
 )
-
-# Standard Include Dirs (board.h, audio headers, etc.)
-set(INCLUDE_DIRS "." "display" "display/lvgl_display" "display/lvgl_display/jpg" "audio" "audio/demuxer" "protocols" "${CMAKE_CURRENT_SOURCE_DIR}/boards/common")
-
-# Target-specific Bluetooth NimBLE handling (Force added for ESP32/S3)
-set(EXTRA_BT_REQS "")
-if(CONFIG_IDF_TARGET_ESP32 OR CONFIG_IDF_TARGET_ESP32S3)
-    list(APPEND INCLUDE_DIRS
-        "$ENV{IDF_PATH}/components/bt/porting/include"
-        "$ENV{IDF_PATH}/components/bt/host/nimble/port/include"
-        "$ENV{IDF_PATH}/components/bt/host/nimble/nimble/include"
-        "$ENV{IDF_PATH}/components/bt/porting/npl/freertos/include"
-    )
-    set(EXTRA_BT_REQS bt)
+if(CONFIG_XIAOZHI_NETWORK_ETHERNET)
+    list(APPEND SOURCES "boards/common/ethernet_board.cc")
 endif()
+list(APPEND INCLUDE_DIRS ${CMAKE_CURRENT_SOURCE_DIR}/boards/common)
+
 
 idf_build_get_property(build_components BUILD_COMPONENTS)
+# Function to find component dynamically by pattern
 function(find_component_by_pattern PATTERN COMPONENT_VAR PATH_VAR)
     foreach(COMPONENT ${build_components})
         if(COMPONENT MATCHES "${PATTERN}")
@@ -90,10 +107,13 @@ function(find_component_by_pattern PATTERN COMPONENT_VAR PATH_VAR)
     endforeach()
 endfunction()
 
+# Set default BUILTIN_TEXT_FONT and BUILTIN_ICON_FONT
 set(BUILTIN_TEXT_FONT font_noto_sans_basic_14_1)
 set(BUILTIN_ICON_FONT font_material_symbols_14_1)
+
 set(EMOTE_RESOLUTION "320_240")
 
+# Select the board source directory from Kconfig
 if(CONFIG_BOARD_TYPE_BREAD_COMPACT_WIFI)
     set(BOARD_DIR "bread-compact-wifi")
     set(BUILTIN_TEXT_FONT font_noto_sans_basic_14_1)
@@ -882,7 +902,7 @@ elseif(CONFIG_BOARD_TYPE_ELECTRON_BOT)
     set(BOARD_DIR "electron-bot")
     set(BUILTIN_TEXT_FONT font_noto_sans_basic_20_4)
     set(BUILTIN_ICON_FONT font_material_symbols_20_4)
-    set(DEFAULT_EMOJI_COLLECTION noto-color-emoji_64)
+    set(DEFAULT_EMOJI_COLLECTION otto-gif)
 elseif(CONFIG_BOARD_TYPE_BREAD_COMPACT_WIFI_CAM)
     set(BOARD_DIR "bread-compact-wifi-s3cam")
     set(BUILTIN_TEXT_FONT font_noto_sans_basic_16_4)
@@ -996,7 +1016,7 @@ file(GLOB BOARD_SOURCES
 )
 list(APPEND SOURCES ${BOARD_SOURCES})
 
-# Select audio engine
+# Select one audio engine for each chip family
 if(CONFIG_IDF_TARGET_ESP32S3 OR CONFIG_IDF_TARGET_ESP32P4 OR CONFIG_IDF_TARGET_ESP32S31)
     list(APPEND SOURCES "audio/engines/afe_audio_engine.cc")
     list(APPEND SOURCES "audio/wake_words/custom_wake_word.cc")
@@ -1006,11 +1026,12 @@ else()
     list(APPEND SOURCES "audio/wake_words/esp_wake_word.cc")
 endif()
 
+# Auto Select Additional Sources
 if (CONFIG_USE_ESP_BLUFI_WIFI_PROVISIONING)
     list(APPEND SOURCES "boards/common/blufi.cpp")
 endif ()
 
-# Select language
+# Select language directory according to Kconfig
 if(CONFIG_LANGUAGE_ZH_CN)
     set(LANG_DIR "zh-CN")
 elseif(CONFIG_LANGUAGE_ZH_TW)
@@ -1095,19 +1116,25 @@ elseif(CONFIG_LANGUAGE_SR_RS)
     set(LANG_DIR "sr-RS")
 endif()
 
+# Define generation path
 set(LANG_JSON "${CMAKE_CURRENT_SOURCE_DIR}/assets/locales/${LANG_DIR}/language.json")
 set(LANG_HEADER "${CMAKE_CURRENT_SOURCE_DIR}/assets/lang_config.h")
 
+# Collect current language audio files
 file(GLOB LANG_SOUNDS ${CMAKE_CURRENT_SOURCE_DIR}/assets/locales/${LANG_DIR}/*.ogg)
 
+# If not en-US, collect en-US audio files as fallback for missing files
 if(NOT LANG_DIR STREQUAL "en-US")
     file(GLOB EN_US_SOUNDS ${CMAKE_CURRENT_SOURCE_DIR}/assets/locales/en-US/*.ogg)
+
+    # Extract filenames (without path) from current language
     set(EXISTING_NAMES "")
     foreach(SOUND_FILE ${LANG_SOUNDS})
         get_filename_component(FILENAME ${SOUND_FILE} NAME)
         list(APPEND EXISTING_NAMES ${FILENAME})
     endforeach()
 
+    # Only add en-US audio files that are missing in current language
     foreach(EN_SOUND ${EN_US_SOUNDS})
         get_filename_component(FILENAME ${EN_SOUND} NAME)
         if(NOT ${FILENAME} IN_LIST EXISTING_NAMES)
@@ -1119,19 +1146,21 @@ endif()
 
 file(GLOB COMMON_SOUNDS ${CMAKE_CURRENT_SOURCE_DIR}/assets/common/*.ogg)
 
+# If target chip is ESP32, exclude specific files to avoid build errors
 if(CONFIG_IDF_TARGET_ESP32)
     list(REMOVE_ITEM SOURCES "audio/codecs/box_audio_codec.cc"
-                            "audio/codecs/es8388_audio_codec.cc"
-                            "audio/codecs/es8389_audio_codec.cc"
-                            "led/gpio_led.cc"
-                            "display/lvgl_display/jpg/image_to_jpeg.cpp"
-                            "display/lvgl_display/jpg/jpeg_to_image.c"
-                            "boards/common/nt26_board.cc"
-                            "boards/common/ml307_board.cc"
-                            "boards/common/dual_network_board.cc"
-                            )
+                             "audio/codecs/es8388_audio_codec.cc"
+                             "audio/codecs/es8389_audio_codec.cc"
+                             "led/gpio_led.cc"
+                             "display/lvgl_display/jpg/image_to_jpeg.cpp"
+                             "display/lvgl_display/jpg/jpeg_to_image.c"
+                             "boards/common/nt26_board.cc"
+                             "boards/common/ml307_board.cc"
+                             "boards/common/dual_network_board.cc"
+                             )
 endif()
 
+# Include EspVideo if target is ESP32S3 or ESP32P4
 if(CONFIG_IDF_TARGET_ESP32S3 OR CONFIG_IDF_TARGET_ESP32P4)
     list(APPEND SOURCES "boards/common/esp_video.cc"
                         "boards/common/rndis_board.cc"
@@ -1170,13 +1199,14 @@ if(CONFIG_BOARD_TYPE_ESP_VOCAT AND IDF_VERSION_MAJOR LESS 6)
         espressif__touch_button_sensor
     )
 endif()
-if(CONFIG_BOARD_TYPE_ESP_P4_FUNCTION_EV_BOARD)
+if(CONFIG_BOARD_TYPE_ESP32_P4_FUNCTION_EV_BOARD)
     list(APPEND MAIN_PRIV_REQUIRES_EXTRA
         esp_driver_sdmmc
         sdmmc
     )
 endif()
 
+# Registered Components: esp_http_client and json explicitly added here
 idf_component_register(SRCS ${SOURCES}
                     EMBED_FILES ${LANG_SOUNDS} ${COMMON_SOUNDS}
                     INCLUDE_DIRS ${INCLUDE_DIRS}
@@ -1202,18 +1232,11 @@ idf_component_register(SRCS ${SOURCES}
                         mbedtls
                         console
                         efuse
+                        bt
                         fatfs
                         xiaozhi-fonts
-                        mqtt
-                        bt
-                        ${EXTRA_BT_REQS}
                         ${MAIN_PRIV_REQUIRES_EXTRA}
                     )
-
-target_include_directories(${COMPONENT_LIB} PRIVATE
-    "$ENV{IDF_PATH}/components/bt/porting/include"
-    "$ENV{IDF_PATH}/components/bt/porting/npl/freertos/include"
-)
 
 if(NOT CMAKE_BUILD_EARLY_EXPANSION)
     target_compile_options(${COMPONENT_LIB} PRIVATE $<$<COMPILE_LANGUAGE:CXX>:-std=gnu++23>)
@@ -1233,7 +1256,7 @@ if(NOT _font_match)
 endif()
 set(TEXT_FONT_SIZE "${CMAKE_MATCH_1}")
 set(TEXT_FONT_BPP "${CMAKE_MATCH_2}")
-if(NOT CMAKE_BUILD_EARLY_SNOW)
+if(NOT CMAKE_BUILD_EARLY_EXPANSION)
     target_compile_definitions(${COMPONENT_LIB}
                         PRIVATE BOARD_TYPE=\"${BOARD_TYPE}\" BOARD_NAME=\"${BOARD_NAME}\"
                         PRIVATE BOARD_MANUFACTURER=\"${BOARD_MANUFACTURER}\"
@@ -1268,15 +1291,18 @@ add_custom_command(
     COMMENT "Generating ${LANG_DIR} language config"
 )
 
+# Force build generation dependencies
 add_custom_target(lang_header ALL
     DEPENDS ${LANG_HEADER}
 )
 
+# Find ESP-SR component dynamically
 find_component_by_pattern("espressif__esp-sr" ESP_SR_COMPONENT ESP_SR_COMPONENT_PATH)
 if(ESP_SR_COMPONENT_PATH)
     set(ESP_SR_MODEL_PATH "${ESP_SR_COMPONENT_PATH}/model")
 endif()
 
+# Find xiaozhi-fonts component dynamically
 find_component_by_pattern("xiaozhi-fonts" NOTO_FONTS_COMPONENT NOTO_FONTS_COMPONENT_PATH)
 if(NOTO_FONTS_COMPONENT_PATH)
     set(NOTO_FONTS_PATH "${NOTO_FONTS_COMPONENT_PATH}")
@@ -1356,6 +1382,7 @@ endforeach()
 
 endif()
 
+# Function to build default assets based on configuration
 function(build_default_assets_bin)
     set(GENERATED_ASSETS_BIN "${CMAKE_BINARY_DIR}/generated_assets.bin")
     set(DEFAULT_ASSETS_DEPENDENCIES
